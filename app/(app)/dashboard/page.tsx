@@ -7,14 +7,17 @@ import { useShell } from '@/components/AppShell';
 
 type Stats = { revenueMTD: number; jobsBooked: number; pipelineValue: number; rating: number; reviewCount: number; customerCount: number; leadConversionRate: number };
 type AILogEntry = { id: string; type: string; summary: string; timestamp: number };
-type Lead = { id: string; name: string; status: string; type: string; value: number; address?: string };
+type Lead = { id: string; name: string; status: string; type: string; value: number; address?: string; aiScore?: number };
 type Job = { id: string; customerName: string; scheduledFor: number; durationMinutes: number; address?: string; type: string; value: number };
+type Briefing = { text: string; generatedAt: number; date: string };
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [aiLog, setAILog] = useState<AILogEntry[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [todayJobs, setTodayJobs] = useState<Job[]>([]);
+  const [briefing, setBriefing] = useState<Briefing | null>(null);
+  const [briefingLoading, setBriefingLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
   const { openSidebar } = useShell();
@@ -29,10 +32,12 @@ export default function DashboardPage() {
       fetch('/api/stats').then((r) => r.json()),
       fetch('/api/leads').then((r) => r.json()),
       fetch('/api/jobs').then((r) => r.json()),
-    ]).then(([s, l, j]) => {
+      fetch('/api/ai/briefing').then((r) => r.json()),
+    ]).then(([s, l, j, b]) => {
       setStats(s.stats);
       setAILog(s.aiLog || []);
       setLeads(l.leads || []);
+      setBriefing(b.briefing);
       const today = new Date(); today.setHours(0, 0, 0, 0);
       const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
       const todays = (j.jobs || []).filter((job: Job) => job.scheduledFor >= today.getTime() && job.scheduledFor < tomorrow.getTime())
@@ -41,6 +46,14 @@ export default function DashboardPage() {
       setLoading(false);
     });
   }, []);
+
+  async function generateBriefing() {
+    setBriefingLoading(true);
+    const res = await fetch('/api/ai/briefing', { method: 'POST' });
+    const data = await res.json();
+    setBriefing(data.briefing);
+    setBriefingLoading(false);
+  }
 
   const fmt = (n: number) => '$' + n.toLocaleString();
   const time = (t: number) => {
@@ -67,6 +80,33 @@ export default function DashboardPage() {
       />
 
       <div className="p-4 md:p-6 space-y-4 max-w-[1400px]">
+        {/* AI Daily Briefing */}
+        <div className="bg-ink-2 border border-rule rounded-lg overflow-hidden">
+          <div className="px-4 py-3 border-b border-rule flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[11px] text-signal tracking-wider uppercase">⚡ Daily Briefing</span>
+              {briefing && <span className="font-mono text-[10px] text-paper-dim">{new Date(briefing.generatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>}
+            </div>
+            <button
+              onClick={generateBriefing}
+              disabled={briefingLoading}
+              className="text-[11px] text-signal hover:text-signal-bright font-medium disabled:opacity-40">
+              {briefingLoading ? 'Writing...' : briefing ? 'Refresh →' : 'Generate →'}
+            </button>
+          </div>
+          <div className="p-4">
+            {briefing ? (
+              <div className="text-sm text-paper leading-relaxed whitespace-pre-wrap font-serif" style={{ lineHeight: 1.6 }}
+                dangerouslySetInnerHTML={{ __html: briefing.text.replace(/\*\*(.+?)\*\*/g, '<strong class="font-sans text-paper font-semibold">$1</strong>').replace(/\n/g, '<br/>') }}
+              />
+            ) : (
+              <div className="text-sm text-paper-mute italic">
+                Click <span className="text-signal">Generate</span> to get your AI-powered morning briefing — a sharp summary of what needs your attention today.
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
