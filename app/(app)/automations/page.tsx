@@ -64,7 +64,17 @@ export default function AutomationsPage() {
   const [creating, setCreating] = useState(false);
   const { openSidebar } = useShell();
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const onFocus = () => load();
+    const onVis = () => { if (document.visibilityState === 'visible') load(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, []);
   async function load() {
     const res = await fetch('/api/automations');
     const data = await res.json();
