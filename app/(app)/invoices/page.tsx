@@ -28,7 +28,17 @@ export default function InvoicesPage() {
   const highlight = params.get('highlight');
   const { openSidebar } = useShell();
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const onFocus = () => load();
+    const onVis = () => { if (document.visibilityState === 'visible') load(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, []);
   async function load() {
     const res = await fetch('/api/invoices');
     const data = await res.json();
