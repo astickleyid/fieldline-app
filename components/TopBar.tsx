@@ -92,6 +92,15 @@ export default function TopBar({ title, subtitle, action, onMenuClick }: {
                 autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const first =
+                      (results.leads && results.leads[0] && `/leads/${results.leads[0].id}`) ||
+                      (results.customers && results.customers[0] && `/customers/${results.customers[0].id}`) ||
+                      (results.jobs && results.jobs[0] && `/calendar`);
+                    if (first) { setOpen(false); router.push(first); }
+                  }
+                }}
                 placeholder="Search leads, customers, jobs..."
                 className="flex-1 bg-transparent text-paper outline-none text-sm placeholder-paper-dim"
               />
