@@ -4,17 +4,44 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
-const links = [
-  { href: '/dashboard', label: 'Dashboard', icon: '◐' },
-  { href: '/leads', label: 'Pipeline', icon: '▤' },
-  { href: '/customers', label: 'Customers', icon: '◉' },
-  { href: '/calendar', label: 'Schedule', icon: '▦' },
-  { href: '/map', label: 'Map', icon: '◯' },
-  { href: '/invoices', label: 'Invoices', icon: '$' },
-  { href: '/reviews', label: 'Reviews', icon: '★' },
-  { href: '/analytics', label: 'Analytics', icon: '◎' },
-  { href: '/activity', label: 'Activity', icon: '↺' },
-  { href: '/settings', label: 'Settings', icon: '⚙' },
+const sections: { heading?: string; links: { href: string; label: string; icon: string }[] }[] = [
+  {
+    links: [
+      { href: '/dashboard', label: 'Dashboard', icon: '◐' },
+      { href: '/leads', label: 'Pipeline', icon: '▤' },
+      { href: '/customers', label: 'Customers', icon: '◉' },
+      { href: '/calendar', label: 'Schedule', icon: '▦' },
+      { href: '/map', label: 'Map', icon: '◯' },
+    ],
+  },
+  {
+    heading: 'Operations',
+    links: [
+      { href: '/invoices', label: 'Invoices', icon: '$' },
+      { href: '/tasks', label: 'Tasks', icon: '▸' },
+      { href: '/reviews', label: 'Reviews', icon: '★' },
+    ],
+  },
+  {
+    heading: 'Automation',
+    links: [
+      { href: '/automations', label: 'Automations', icon: '⚡' },
+      { href: '/templates', label: 'Templates', icon: '✎' },
+    ],
+  },
+  {
+    heading: 'Insights',
+    links: [
+      { href: '/analytics', label: 'Analytics', icon: '◎' },
+      { href: '/activity', label: 'Activity', icon: '↺' },
+      { href: '/notifications', label: 'Notifications', icon: '◔' },
+    ],
+  },
+  {
+    links: [
+      { href: '/settings', label: 'Settings', icon: '⚙' },
+    ],
+  },
 ];
 
 export default function Sidebar({
@@ -64,23 +91,30 @@ export default function Sidebar({
           </div>
         </div>
 
-        <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
-          {links.map((l) => {
-            const active = pathname === l.href || (l.href !== '/dashboard' && pathname.startsWith(l.href));
-            return (
-              <Link
-                key={l.href}
-                href={l.href}
-                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-all ${
-                  active
-                    ? 'bg-paper text-ink font-medium'
-                    : 'text-paper-mute hover:text-paper hover:bg-rule-2'
-                }`}>
-                <span className="font-mono text-[14px] w-4 text-center">{l.icon}</span>
-                {l.label}
-              </Link>
-            );
-          })}
+        <nav className="flex-1 px-2 py-3 space-y-3 overflow-y-auto">
+          {sections.map((section, sIdx) => (
+            <div key={sIdx} className="space-y-0.5">
+              {section.heading && (
+                <div className="px-3 py-1 font-mono text-[9px] text-paper-dim tracking-wider uppercase">{section.heading}</div>
+              )}
+              {section.links.map((l) => {
+                const active = pathname === l.href || (l.href !== '/dashboard' && pathname.startsWith(l.href));
+                return (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    className={`flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-all ${
+                      active
+                        ? 'bg-paper text-ink font-medium'
+                        : 'text-paper-mute hover:text-paper hover:bg-rule-2'
+                    }`}>
+                    <span className="font-mono text-[14px] w-4 text-center">{l.icon}</span>
+                    {l.label}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className="px-3 py-3 border-t border-rule">
