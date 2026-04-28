@@ -186,3 +186,56 @@ export async function suggestPrice(input: {
     return { suggested: 0, range: { low: 0, high: 0 }, reasoning: 'Could not parse suggestion' };
   }
 }
+
+export async function reviveLead(input: {
+  leadName: string;
+  daysIdle: number;
+  status: string;
+  jobDescription: string;
+  businessName: string;
+  voice?: string;
+}): Promise<string> {
+  const msg = await client.messages.create({
+    model: MODEL,
+    max_tokens: 250,
+    system: `You write re-engagement messages for cold leads on behalf of ${input.businessName}. Match this voice: ${input.voice || 'casual, direct, friendly Midwestern'}. Sound like a real person reaching out, not a sales bot. Vary your openings — don't always say "I just wanted to check in".`,
+    messages: [
+      {
+        role: 'user',
+        content: `Lead "${input.leadName}" was last active ${input.daysIdle} days ago. Status: ${input.status}. Job: ${input.jobDescription}.\n\nWrite a fresh re-engagement message (text or short email) that:\n- Doesn't sound generic\n- Acknowledges time has passed without making them feel guilty\n- Offers a concrete next step (a small ask)\n- Under 50 words\n\nWrite the message only, no preamble.`,
+      },
+    ],
+  });
+  const block = msg.content[0];
+  return block.type === 'text' ? block.text : '';
+}
+
+export async function customerInsights(input: {
+  businessName: string;
+  trade: string;
+  customers: Array<{ name: string; totalSpent: number; jobCount: number; tags?: string[]; firstSeenAt: number; lastJobAt?: number }>;
+  jobs: Array<{ value: number; type: string; status: string; scheduledFor: number }>;
+  reviews: Array<{ rating: number }>;
+}): Promise<string> {
+  const customerSummary = input.customers.slice(0, 30).map((c) =>
+    `- ${c.name}: ${c.jobCount} jobs, $${c.totalSpent} lifetime${c.tags?.length ? ', tags: ' + c.tags.join(',') : ''}, last: ${c.lastJobAt ? Math.floor((Date.now() - c.lastJobAt) / 86_400_000) + 'd ago' : 'never'}`
+  ).join('\n');
+
+  const totalRevenue = input.jobs.filter((j) => j.status === 'completed').reduce((s, j) => s + j.value, 0);
+  const avgJobValue = input.jobs.length ? totalRevenue / input.jobs.length : 0;
+  const avgRating = input.reviews.length ? input.reviews.reduce((s, r) => s + r.rating, 0) / input.reviews.length : 0;
+
+  const msg = await client.messages.create({
+    model: MODEL,
+    max_tokens: 700,
+    system: `You analyze customer data for ${input.businessName}, a ${input.trade} business. Find ACTIONABLE patterns. No fluff. Be specific.`,
+    messages: [
+      {
+        role: 'user',
+        content: `Find 3-5 actionable insights from this data. Each insight should be 1-2 sentences. Focus on revenue opportunities, churn risks, and customer segments worth pursuing.\n\nStats:\n- ${input.customers.length} total customers\n- $${totalRevenue} all-time revenue\n- $${Math.round(avgJobValue)} avg job\n- ${avgRating.toFixed(1)}★ avg rating (${input.reviews.length} reviews)\n\nCustomers:\n${customerSummary}\n\nFormat: bulletpoints, plain language. Lead with the most valuable insight first. No greetings or sign-offs.`,
+      },
+    ],
+  });
+  const block = msg.content[0];
+  return block.type === 'text' ? block.text : '';
+}
