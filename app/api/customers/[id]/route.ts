@@ -1,14 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCustomer, updateCustomer, deleteCustomer, listCustomerActivity } from '@/lib/db';
+import { getCustomer, updateCustomer, deleteCustomer, listCustomerActivity, listJobs, listInvoices } from '@/lib/db';
 import { requireUser } from '@/lib/session';
 
 export async function GET(_req: NextRequest, ctx: { params: { id: string } }) {
   try {
-    await requireUser();
+    const { userId } = await requireUser();
     const customer = await getCustomer(ctx.params.id);
     if (!customer) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    const activity = await listCustomerActivity(ctx.params.id);
-    return NextResponse.json({ customer, activity });
+    const [activity, allJobs, allInvoices] = await Promise.all([
+      listCustomerActivity(ctx.params.id),
+      listJobs(userId),
+      listInvoices(userId),
+    ]);
+    const jobs = allJobs.filter((j) =>
+      j.customerId === ctx.params.id ||
+      j.customerName?.toLowerCase() === customer.name.toLowerCase()
+    );
+    const invoices = allInvoices.filter((i) =>
+      i.customerId === ctx.params.id ||
+      i.customerName?.toLowerCase() === customer.name.toLowerCase()
+    );
+    return NextResponse.json({ customer, activity, jobs, invoices });
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
