@@ -97,30 +97,52 @@ export default function LeadDetailPage() {
     });
     setSaving(false);
     setEditing(false);
-    load();
+    quietReload();
   }
 
   async function changeStatus(status: LeadStatus) {
     if (!lead) return;
+    // Optimistic update
+    setLead({ ...lead, status });
     await fetch(`/api/leads/${lead.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
     });
-    load();
+    quietReload();
   }
 
   async function generateQuote() {
     if (!lead) return;
     setGenQuoteLoading(true);
     const desc = `${lead.type} job for ${lead.name}${lead.address ? ' at ' + lead.address : ''}${lead.notes ? '. Notes: ' + lead.notes : ''}`;
-    await fetch('/api/ai/quote', {
+    const res = await fetch('/api/ai/quote', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jobDescription: desc, leadId: lead.id }),
     });
+    const data = await res.json();
     setGenQuoteLoading(false);
-    load();
+
+    // Optimistic update — show quote and status change instantly
+    if (data.quote) {
+      setLead({ ...lead, quote: data.quote, quoteGeneratedAt: Date.now(), status: 'quoted' });
+    }
+    // Then refresh activity timeline in background (no loading flash)
+    quietReload();
+  }
+
+  async function quietReload() {
+    const [leadsRes, actRes] = await Promise.all([
+      fetch('/api/leads').then((r) => r.json()),
+      fetch(`/api/leads/${leadId}/activity`).then((r) => r.json()),
+    ]);
+    const found = (leadsRes.leads || []).find((l: Lead) => l.id === leadId);
+    if (found) {
+      setLead(found);
+      setEditForm(found);
+    }
+    setActivity(actRes.activity || []);
   }
 
   async function resetQuote() {
@@ -130,7 +152,7 @@ export default function LeadDetailPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ quote: '', quoteGeneratedAt: 0 }),
     });
-    load();
+    quietReload();
   }
 
   async function generateFollowUp() {
@@ -161,7 +183,7 @@ export default function LeadDetailPage() {
     });
     setBooking(false);
     setShowBook(false);
-    load();
+    quietReload();
   }
 
   async function addNote() {
@@ -174,7 +196,7 @@ export default function LeadDetailPage() {
     });
     setNewNote('');
     setAddingNote(false);
-    load();
+    quietReload();
   }
 
   async function createInvoice() {
