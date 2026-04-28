@@ -23,6 +23,8 @@ export interface Lead {
   value: number;
   notes?: string;
   source?: string;
+  quote?: string;
+  quoteGeneratedAt?: number;
   createdAt: number;
   updatedAt: number;
 }
