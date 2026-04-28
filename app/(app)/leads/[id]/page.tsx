@@ -21,6 +21,11 @@ type Lead = {
   tags?: string[];
   quote?: string;
   quoteGeneratedAt?: number;
+  quoteAcceptedAt?: number;
+  quoteAcceptToken?: string;
+  aiScore?: number;
+  aiScoreReasoning?: string;
+  aiScoredAt?: number;
   createdAt: number;
   updatedAt: number;
 };
@@ -62,6 +67,10 @@ export default function LeadDetailPage() {
   // Note input
   const [newNote, setNewNote] = useState('');
   const [addingNote, setAddingNote] = useState(false);
+
+  // Quote accept link
+  const [acceptUrl, setAcceptUrl] = useState('');
+  const [generatingLink, setGeneratingLink] = useState(false);
 
   useEffect(() => { load(); }, [leadId]);
 
@@ -186,6 +195,19 @@ export default function LeadDetailPage() {
     if (data.invoice) router.push(`/invoices?highlight=${data.invoice.id}`);
   }
 
+  async function generateAcceptLink() {
+    if (!lead) return;
+    setGeneratingLink(true);
+    const res = await fetch(`/api/leads/${lead.id}/accept`, { method: 'POST' });
+    const data = await res.json();
+    if (data.url) {
+      const fullUrl = `${window.location.origin}${data.url}`;
+      setAcceptUrl(fullUrl);
+      try { await navigator.clipboard.writeText(fullUrl); } catch {}
+    }
+    setGeneratingLink(false);
+  }
+
   async function remove() {
     if (!lead || !confirm(`Delete lead "${lead.name}"? This cannot be undone.`)) return;
     await fetch(`/api/leads/${lead.id}`, { method: 'DELETE' });
@@ -234,6 +256,25 @@ export default function LeadDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* LEFT — main info */}
           <div className="lg:col-span-2 space-y-4">
+            {/* AI Score Banner */}
+            {lead.aiScore !== undefined && (
+              <div className={`bg-ink-2 border rounded-lg p-4 ${
+                lead.aiScore >= 70 ? 'border-acid/40' : lead.aiScore >= 40 ? 'border-amber-400/40' : 'border-red-400/40'
+              }`}>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`font-serif italic text-3xl ${
+                      lead.aiScore >= 70 ? 'text-acid' : lead.aiScore >= 40 ? 'text-amber-400' : 'text-red-400'
+                    }`}>{lead.aiScore}</div>
+                    <div className="min-w-0">
+                      <div className="font-mono text-[10px] text-paper-mute tracking-wider uppercase">AI Close Probability</div>
+                      <div className="text-xs text-paper leading-relaxed">{lead.aiScoreReasoning}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Status pipeline */}
             <div className="bg-ink-2 border border-rule rounded-lg p-4">
               <div className="font-mono text-[10px] text-paper-mute tracking-wider uppercase mb-3">Status</div>
@@ -344,11 +385,34 @@ export default function LeadDetailPage() {
                 <button onClick={createInvoice} className="px-3 py-1.5 bg-signal hover:bg-signal-bright text-white rounded-md text-xs font-medium">
                   $ Create Invoice
                 </button>
+                {lead.quote && (
+                  <button onClick={generateAcceptLink} disabled={generatingLink} className="px-3 py-1.5 bg-amber-400/10 border border-amber-400/30 text-amber-400 hover:bg-amber-400/20 rounded-md text-xs font-medium">
+                    {generatingLink ? '...' : '↗ Send Accept Link'}
+                  </button>
+                )}
                 {lead.phone && <a href={`sms:${lead.phone}`} className="px-3 py-1.5 border border-rule text-paper-mute hover:text-paper rounded-md text-xs">Text</a>}
                 {lead.phone && <a href={`tel:${lead.phone}`} className="px-3 py-1.5 border border-rule text-paper-mute hover:text-paper rounded-md text-xs">Call</a>}
                 {lead.email && <a href={`mailto:${lead.email}`} className="px-3 py-1.5 border border-rule text-paper-mute hover:text-paper rounded-md text-xs">Email</a>}
                 <button onClick={remove} className="px-3 py-1.5 border border-red-400/30 text-red-400 hover:bg-red-400/10 rounded-md text-xs ml-auto">Delete</button>
               </div>
+
+              {acceptUrl && (
+                <div className="mt-3 pt-3 border-t border-rule fade-up">
+                  <div className="font-mono text-[10px] text-paper-mute tracking-wider uppercase mb-2">Customer Accept Link (copied)</div>
+                  <div className="bg-ink border border-rule rounded p-2 mb-2">
+                    <div className="font-mono text-[10px] text-paper truncate">{acceptUrl}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <a href={acceptUrl} target="_blank" rel="noopener" className="px-3 py-1.5 border border-rule text-paper-mute hover:text-paper rounded-md text-xs">Preview</a>
+                    {lead.email && (
+                      <a href={`mailto:${lead.email}?subject=${encodeURIComponent('Your quote from ' + lead.name)}&body=${encodeURIComponent('Hi! Here is your quote — click to accept:\n\n' + acceptUrl)}`} className="px-3 py-1.5 bg-signal/10 border border-signal/30 text-signal hover:bg-signal/20 rounded-md text-xs">Email Customer</a>
+                    )}
+                    {lead.phone && (
+                      <a href={`sms:${lead.phone}?&body=${encodeURIComponent('Your quote: ' + acceptUrl)}`} className="px-3 py-1.5 bg-signal/10 border border-signal/30 text-signal hover:bg-signal/20 rounded-md text-xs">Text Customer</a>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {showBook && (
                 <div className="mt-4 pt-4 border-t border-rule space-y-3 fade-up">
