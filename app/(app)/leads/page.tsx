@@ -197,6 +197,7 @@ function LeadFormModal({ lead, onClose, onSaved }: { lead?: Lead; onClose: () =>
   const [quote, setQuote] = useState(lead?.quote || '');
   const [quoteAt, setQuoteAt] = useState<number | undefined>(lead?.quoteGeneratedAt);
   const [genLoading, setGenLoading] = useState(false);
+  const [genError, setGenError] = useState('');
 
   // Book job state
   const [showBook, setShowBook] = useState(false);
@@ -242,23 +243,32 @@ function LeadFormModal({ lead, onClose, onSaved }: { lead?: Lead; onClose: () =>
   async function generateQuote() {
     setGenLoading(true);
     setQuote('');
+    setGenError('');
     const desc = `${type} job for ${name}${address ? ' at ' + address : ''}${notes ? '. Notes: ' + notes : ''}`;
-    const res = await fetch('/api/ai/quote', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jobDescription: desc, leadId: lead?.id }),
-    });
-    const data = await res.json();
-    const generated = data.quote || 'Error generating quote';
-    setQuote(generated);
-    setQuoteAt(Date.now());
-    if (lead) {
-      // refresh parent list so card shows quoted status
-      onSaved();
-      // bump local status if it was new
-      if (status === 'new') setStatus('quoted');
+    try {
+      const res = await fetch('/api/ai/quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobDescription: desc, leadId: lead?.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setGenError(data.error || `HTTP ${res.status}`);
+        setGenLoading(false);
+        return;
+      }
+      const generated = data.quote || '';
+      setQuote(generated);
+      setQuoteAt(Date.now());
+      if (lead) {
+        if (status === 'new') setStatus('quoted');
+        onSaved();
+      }
+    } catch (e: any) {
+      setGenError(e.message || 'Network error');
+    } finally {
+      setGenLoading(false);
     }
-    setGenLoading(false);
   }
 
   async function resetQuote() {
@@ -432,6 +442,10 @@ function LeadFormModal({ lead, onClose, onSaved }: { lead?: Lead; onClose: () =>
             {quote ? (
               <div className="bg-ink border border-rule rounded-md p-3 font-mono text-xs text-paper leading-relaxed whitespace-pre-wrap fade-up">
                 {quote}
+              </div>
+            ) : genError ? (
+              <div className="bg-red-500/5 border border-red-500/30 rounded-md p-3 font-mono text-xs text-red-400 leading-relaxed">
+                Error: {genError}
               </div>
             ) : (
               <div className="bg-ink border border-dashed border-rule rounded-md p-4 text-center">
