@@ -38,6 +38,7 @@ export interface Customer {
   jobCount: number;
   firstSeenAt: number;
   lastJobAt?: number;
+  portalToken?: string;
   createdAt: number;
 }
 
@@ -137,6 +138,76 @@ export interface Briefing {
   text: string;
   generatedAt: number;
   date: string; // YYYY-MM-DD
+}
+
+export interface Task {
+  id: string;
+  userId: string;
+  title: string;
+  notes?: string;
+  done: boolean;
+  dueAt?: number;
+  priority: 'low' | 'normal' | 'high';
+  leadId?: string;
+  customerId?: string;
+  jobId?: string;
+  createdAt: number;
+  completedAt?: number;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  type: 'stale-lead' | 'overdue-invoice' | 'new-review' | 'quote-accepted' | 'job-tomorrow' | 'system';
+  title: string;
+  message: string;
+  link?: string;
+  read: boolean;
+  createdAt: number;
+}
+
+export interface EmailTemplate {
+  id: string;
+  userId: string;
+  name: string;
+  subject: string;
+  body: string;
+  category: 'quote' | 'follow-up' | 'invoice' | 'thank-you' | 'general';
+  createdAt: number;
+}
+
+export interface JobPhoto {
+  id: string;
+  jobId: string;
+  userId: string;
+  type: 'before' | 'after' | 'reference';
+  dataUrl: string; // base64
+  caption?: string;
+  uploadedAt: number;
+}
+
+export interface AutomationRule {
+  id: string;
+  userId: string;
+  name: string;
+  trigger: 'lead-status-changed' | 'job-completed' | 'invoice-overdue' | 'lead-stale';
+  conditions: { from?: string; to?: string; daysIdle?: number };
+  action: 'create-task' | 'send-notification' | 'auto-invoice' | 'add-tag';
+  actionConfig: Record<string, any>;
+  enabled: boolean;
+  lastRunAt?: number;
+  runCount: number;
+  createdAt: number;
+}
+
+export interface SavedView {
+  id: string;
+  userId: string;
+  name: string;
+  resource: 'leads' | 'customers' | 'invoices' | 'jobs';
+  filters: Record<string, any>;
+  sortBy?: string;
+  createdAt: number;
 }
 
 export interface WorkflowRule {
