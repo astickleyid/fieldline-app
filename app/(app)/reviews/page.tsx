@@ -1,0 +1,191 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+
+type Review = {
+  id: string;
+  customer: string;
+  rating: number;
+  text: string;
+  reply?: string;
+  repliedAt?: number;
+  source: string;
+  createdAt: number;
+};
+
+export default function ReviewsPage() {
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [replying, setReplying] = useState<string | null>(null);
+
+  useEffect(() => { load(); }, []);
+  async function load() {
+    const res = await fetch('/api/reviews');
+    const data = await res.json();
+    setReviews(data.reviews || []);
+    setLoading(false);
+  }
+
+  async function aiReply(reviewId: string) {
+    setReplying(reviewId);
+    const res = await fetch(`/api/reviews/${reviewId}/reply`, { method: 'POST' });
+    const data = await res.json();
+    if (data.review) {
+      setReviews((prev) => prev.map((r) => (r.id === reviewId ? data.review : r)));
+    }
+    setReplying(null);
+  }
+
+  const avgRating = reviews.length
+    ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)
+    : '—';
+  const repliedCount = reviews.filter((r) => r.reply).length;
+
+  return (
+    <div>
+      <div className="border-b border-rule px-6 h-14 flex items-center justify-between sticky top-0 bg-ink/80 backdrop-blur-md z-30">
+        <div>
+          <h1 className="text-base font-medium">Reviews</h1>
+          <div className="font-mono text-[10px] text-paper-dim tracking-wider mt-0.5">
+            {avgRating}★ AVG · {reviews.length} TOTAL · {repliedCount} REPLIED
+          </div>
+        </div>
+        <button
+          onClick={() => setAdding(true)}
+          className="px-4 py-1.5 bg-signal hover:bg-signal-bright text-white rounded-md text-xs font-medium transition-all">
+          + Add Review
+        </button>
+      </div>
+
+      <div className="p-6 max-w-3xl">
+        {loading ? (
+          <div className="text-center py-12 font-mono text-xs text-paper-mute">loading...</div>
+        ) : reviews.length === 0 ? (
+          <div className="text-center py-16">
+            <div className="text-paper-mute mb-2">No reviews yet</div>
+            <div className="text-xs text-paper-dim">Add your first review to see how AI replies work</div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {reviews.map((r) => (
+              <div key={r.id} className="bg-ink-2 border border-rule rounded-lg p-5 fade-up">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <div className="text-yellow-400 text-sm tracking-widest mb-1">
+                      {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}
+                    </div>
+                    <div className="text-[13px] text-paper">{r.text}</div>
+                    <div className="font-mono text-[10px] text-paper-mute tracking-wider mt-2">
+                      {r.customer.toUpperCase()} · {r.source.toUpperCase()} · {new Date(r.createdAt).toLocaleDateString()}
+                    </div>
+                  </div>
+                </div>
+
+                {r.reply ? (
+                  <div className="mt-4 pt-4 border-t border-rule">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded bg-acid/10 text-acid border border-acid/20">
+                        AI REPLIED
+                      </span>
+                      <span className="font-mono text-[10px] text-paper-dim">
+                        {r.repliedAt ? new Date(r.repliedAt).toLocaleString() : ''}
+                      </span>
+                    </div>
+                    <div className="text-[13px] text-paper-mute italic">"{r.reply}"</div>
+                  </div>
+                ) : (
+                  <div className="mt-4 pt-4 border-t border-rule flex justify-between items-center">
+                    <span className="font-mono text-[10px] text-paper-dim tracking-wider uppercase">No reply yet</span>
+                    <button
+                      onClick={() => aiReply(r.id)}
+                      disabled={replying === r.id}
+                      className="px-3 py-1.5 bg-signal/10 hover:bg-signal/20 border border-signal/30 text-signal rounded-md text-xs font-medium transition-all disabled:opacity-50">
+                      {replying === r.id ? 'Generating...' : '⚡ AI Reply'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {adding && <AddReviewModal onClose={() => setAdding(false)} onSaved={load} />}
+    </div>
+  );
+}
+
+function AddReviewModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [customer, setCustomer] = useState('');
+  const [rating, setRating] = useState(5);
+  const [text, setText] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    await fetch('/api/reviews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ customer, rating, text, source: 'fieldline' }),
+    });
+    setSaving(false);
+    onSaved();
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-ink/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-ink-2 border border-rule rounded-xl w-full max-w-md fade-up">
+        <div className="px-5 py-3 border-b border-rule flex justify-between items-center">
+          <div className="font-mono text-[10px] text-paper-mute tracking-wider uppercase">New Review</div>
+          <button onClick={onClose} className="text-paper-mute hover:text-paper text-xl">×</button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="font-mono text-[10px] text-paper-mute tracking-wider uppercase block mb-1.5">Customer</label>
+            <input
+              value={customer}
+              onChange={(e) => setCustomer(e.target.value)}
+              placeholder="Marcus T."
+              className="w-full bg-ink border border-rule rounded-md px-3 py-2 text-paper text-sm placeholder-paper-dim outline-none focus:border-signal/40"
+            />
+          </div>
+          <div>
+            <label className="font-mono text-[10px] text-paper-mute tracking-wider uppercase block mb-1.5">Rating</label>
+            <div className="flex gap-2">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setRating(n)}
+                  className={`w-12 h-12 rounded-md border text-xl transition-all ${
+                    rating >= n ? 'border-yellow-400/50 bg-yellow-400/10 text-yellow-400' : 'border-rule text-paper-dim'
+                  }`}>★</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="font-mono text-[10px] text-paper-mute tracking-wider uppercase block mb-1.5">Review Text</label>
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              rows={4}
+              placeholder="Fast and professional. Will use again."
+              className="w-full bg-ink border border-rule rounded-md px-3 py-2 text-paper text-sm placeholder-paper-dim outline-none focus:border-signal/40 resize-none"
+            />
+          </div>
+        </div>
+        <div className="px-5 py-3 border-t border-rule flex gap-2 justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-xs text-paper-mute hover:text-paper">Cancel</button>
+          <button
+            onClick={save}
+            disabled={saving || !customer || !text}
+            className="px-4 py-2 bg-signal hover:bg-signal-bright text-white rounded-md text-xs font-medium disabled:opacity-50 transition-all">
+            {saving ? '...' : 'Add Review'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
