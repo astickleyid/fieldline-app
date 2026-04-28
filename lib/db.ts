@@ -131,6 +131,36 @@ export async function deleteCustomer(customerId: string, userId: string): Promis
   await redis.zrem(`customers:${userId}`, customerId);
 }
 
+export async function getCustomerByPortalToken(token: string): Promise<import('./types').Customer | null> {
+  const customerId = (await redis.get(`portal:${token}`)) as string | null;
+  if (!customerId) return null;
+  return getCustomer(customerId);
+}
+
+export async function ensureCustomerPortalToken(customerId: string): Promise<string> {
+  const customer = await getCustomer(customerId);
+  if (!customer) throw new Error('Customer not found');
+  if ((customer as any).portalToken) return (customer as any).portalToken;
+  const token = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+  await redis.set(`portal:${token}`, customerId);
+  await updateCustomer(customerId, { ...(customer as any), portalToken: token } as any);
+  return token;
+}
+
+// Find all jobs and invoices for a customer (used by portal)
+export async function getCustomerActivity(customerId: string): Promise<{ jobs: Job[]; invoices: import('./types').Invoice[] }> {
+  const customer = await getCustomer(customerId);
+  if (!customer) return { jobs: [], invoices: [] };
+  const [allJobs, allInvoices] = await Promise.all([
+    listJobs(customer.userId),
+    listInvoices(customer.userId),
+  ]);
+  return {
+    jobs: allJobs.filter((j) => j.customerId === customerId),
+    invoices: allInvoices.filter((i) => i.customerId === customerId),
+  };
+}
+
 // ─── LEADS ───────────────────────────────────
 export async function listLeads(userId: string): Promise<Lead[]> {
   const ids = (await redis.zrange(`leads:${userId}`, 0, -1, { rev: true })) as string[];
@@ -165,6 +195,12 @@ export async function updateLead(leadId: string, patch: Partial<Lead>): Promise<
       `${existing.name}: ${existing.status} → ${patch.status}`,
       { leadId, metadata: { from: existing.status, to: patch.status } }
     );
+    // Fire automations
+    fireAutomations(existing.userId, 'lead-status-changed', {
+      lead: updated,
+      from: existing.status,
+      to: patch.status,
+    }).catch((e) => console.error('automation error', e));
   }
   return updated;
 }
@@ -233,6 +269,8 @@ export async function updateJob(jobId: string, patch: Partial<Job>): Promise<Job
         });
       }
     }
+    // Fire automations
+    fireAutomations(existing.userId, 'job-completed', { job: updated }).catch((e) => console.error('automation error', e));
   }
   return updated;
 }
@@ -416,6 +454,287 @@ export async function globalSearch(userId: string, query: string) {
       `${j.customerName} ${j.address || ''} ${j.notes || ''}`.toLowerCase().includes(q)
     ).slice(0, 10),
   };
+}
+
+// ─── TASKS ───────────────────────────────────
+export async function listTasks(userId: string): Promise<import('./types').Task[]> {
+  const ids = (await redis.zrange(`tasks:${userId}`, 0, -1, { rev: true })) as string[];
+  if (!ids.length) return [];
+  const items = await Promise.all(ids.map((id) => redis.get(`task:${id}`)));
+  return items.filter(Boolean) as import('./types').Task[];
+}
+
+export async function getTask(taskId: string): Promise<import('./types').Task | null> {
+  return (await redis.get(`task:${taskId}`)) as import('./types').Task | null;
+}
+
+export async function createTask(data: Omit<import('./types').Task, 'id' | 'createdAt' | 'done'>): Promise<import('./types').Task> {
+  const id = newId('task');
+  const t: import('./types').Task = { ...data, id, done: false, createdAt: Date.now() };
+  await redis.set(`task:${id}`, t);
+  await redis.zadd(`tasks:${data.userId}`, { score: Date.now(), member: id });
+  return t;
+}
+
+export async function updateTask(taskId: string, patch: Partial<import('./types').Task>): Promise<import('./types').Task | null> {
+  const existing = await getTask(taskId);
+  if (!existing) return null;
+  const updated: import('./types').Task = { ...existing, ...patch };
+  if (patch.done && !existing.done) updated.completedAt = Date.now();
+  await redis.set(`task:${taskId}`, updated);
+  return updated;
+}
+
+export async function deleteTask(taskId: string, userId: string): Promise<void> {
+  await redis.del(`task:${taskId}`);
+  await redis.zrem(`tasks:${userId}`, taskId);
+}
+
+// ─── NOTIFICATIONS ───────────────────────────
+export async function listNotifications(userId: string, limit = 50): Promise<import('./types').Notification[]> {
+  const raw = (await redis.lrange(`notif:${userId}`, 0, limit - 1)) as any[];
+  return raw.map((r) => (typeof r === 'string' ? JSON.parse(r) : r)) as import('./types').Notification[];
+}
+
+export async function createNotification(data: Omit<import('./types').Notification, 'id' | 'createdAt' | 'read'>): Promise<import('./types').Notification> {
+  const n: import('./types').Notification = {
+    ...data,
+    id: newId('notif'),
+    read: false,
+    createdAt: Date.now(),
+  };
+  await redis.lpush(`notif:${data.userId}`, JSON.stringify(n));
+  await redis.ltrim(`notif:${data.userId}`, 0, 199);
+  return n;
+}
+
+export async function markNotificationRead(userId: string, notifId: string): Promise<void> {
+  const all = await listNotifications(userId, 200);
+  const idx = all.findIndex((n) => n.id === notifId);
+  if (idx === -1) return;
+  all[idx] = { ...all[idx], read: true };
+  await redis.del(`notif:${userId}`);
+  if (all.length) await redis.rpush(`notif:${userId}`, ...all.map((n) => JSON.stringify(n)));
+}
+
+export async function markAllNotificationsRead(userId: string): Promise<void> {
+  const all = await listNotifications(userId, 200);
+  const updated = all.map((n) => ({ ...n, read: true }));
+  await redis.del(`notif:${userId}`);
+  if (updated.length) await redis.rpush(`notif:${userId}`, ...updated.map((n) => JSON.stringify(n)));
+}
+
+// Auto-generate notifications based on state
+export async function refreshNotifications(userId: string): Promise<void> {
+  const [leads, invoices, reviews, jobs] = await Promise.all([
+    listLeads(userId),
+    listInvoices(userId),
+    listReviews(userId),
+    listJobs(userId),
+  ]);
+  const dayMs = 86_400_000;
+  const existing = await listNotifications(userId, 200);
+  const has = (key: string) => existing.some((n) => n.id.includes(key) || n.message.includes(key));
+
+  // Stale leads
+  for (const l of leads.filter((l) => (l.status === 'new' || l.status === 'quoted') && Date.now() - l.updatedAt > 7 * dayMs)) {
+    if (!has(`stale:${l.id}`)) {
+      await createNotification({
+        userId, type: 'stale-lead',
+        title: 'Stale lead',
+        message: `${l.name} has been ${l.status} for over 7 days`,
+        link: `/leads/${l.id}`,
+      });
+    }
+  }
+  // Overdue invoices
+  for (const i of invoices.filter((i) => i.status === 'overdue')) {
+    if (!has(`overdue:${i.id}`)) {
+      await createNotification({
+        userId, type: 'overdue-invoice',
+        title: 'Invoice overdue',
+        message: `${i.customerName}: $${i.amount}`,
+        link: `/invoices`,
+      });
+    }
+  }
+  // Tomorrow's jobs
+  const tomorrow = new Date(); tomorrow.setHours(0,0,0,0); tomorrow.setDate(tomorrow.getDate()+1);
+  const dayAfter = new Date(tomorrow); dayAfter.setDate(tomorrow.getDate()+1);
+  for (const j of jobs.filter((j) => j.scheduledFor >= tomorrow.getTime() && j.scheduledFor < dayAfter.getTime() && j.status === 'scheduled')) {
+    if (!has(`tmrw:${j.id}`)) {
+      await createNotification({
+        userId, type: 'job-tomorrow',
+        title: 'Job tomorrow',
+        message: `${j.customerName} at ${new Date(j.scheduledFor).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}`,
+        link: `/calendar`,
+      });
+    }
+  }
+}
+
+// ─── EMAIL TEMPLATES ─────────────────────────
+export async function listEmailTemplates(userId: string): Promise<import('./types').EmailTemplate[]> {
+  const ids = (await redis.zrange(`templates:${userId}`, 0, -1, { rev: true })) as string[];
+  if (!ids.length) return [];
+  const items = await Promise.all(ids.map((id) => redis.get(`template:${id}`)));
+  return items.filter(Boolean) as import('./types').EmailTemplate[];
+}
+
+export async function createEmailTemplate(data: Omit<import('./types').EmailTemplate, 'id' | 'createdAt'>): Promise<import('./types').EmailTemplate> {
+  const id = newId('tpl');
+  const t: import('./types').EmailTemplate = { ...data, id, createdAt: Date.now() };
+  await redis.set(`template:${id}`, t);
+  await redis.zadd(`templates:${data.userId}`, { score: Date.now(), member: id });
+  return t;
+}
+
+export async function updateEmailTemplate(id: string, patch: Partial<import('./types').EmailTemplate>): Promise<import('./types').EmailTemplate | null> {
+  const existing = (await redis.get(`template:${id}`)) as import('./types').EmailTemplate | null;
+  if (!existing) return null;
+  const updated = { ...existing, ...patch };
+  await redis.set(`template:${id}`, updated);
+  return updated;
+}
+
+export async function deleteEmailTemplate(id: string, userId: string): Promise<void> {
+  await redis.del(`template:${id}`);
+  await redis.zrem(`templates:${userId}`, id);
+}
+
+// ─── JOB PHOTOS ──────────────────────────────
+export async function listJobPhotos(jobId: string): Promise<import('./types').JobPhoto[]> {
+  const ids = (await redis.zrange(`photos:${jobId}`, 0, -1)) as string[];
+  if (!ids.length) return [];
+  const items = await Promise.all(ids.map((id) => redis.get(`photo:${id}`)));
+  return items.filter(Boolean) as import('./types').JobPhoto[];
+}
+
+export async function addJobPhoto(data: Omit<import('./types').JobPhoto, 'id' | 'uploadedAt'>): Promise<import('./types').JobPhoto> {
+  const id = newId('ph');
+  const p: import('./types').JobPhoto = { ...data, id, uploadedAt: Date.now() };
+  await redis.set(`photo:${id}`, p);
+  await redis.zadd(`photos:${data.jobId}`, { score: Date.now(), member: id });
+  return p;
+}
+
+export async function deleteJobPhoto(photoId: string, jobId: string): Promise<void> {
+  await redis.del(`photo:${photoId}`);
+  await redis.zrem(`photos:${jobId}`, photoId);
+}
+
+// ─── AUTOMATION RULES ────────────────────────
+export async function listAutomationRules(userId: string): Promise<import('./types').AutomationRule[]> {
+  const ids = (await redis.zrange(`rules:${userId}`, 0, -1, { rev: true })) as string[];
+  if (!ids.length) return [];
+  const items = await Promise.all(ids.map((id) => redis.get(`rule:${id}`)));
+  return items.filter(Boolean) as import('./types').AutomationRule[];
+}
+
+export async function createAutomationRule(data: Omit<import('./types').AutomationRule, 'id' | 'createdAt' | 'runCount'>): Promise<import('./types').AutomationRule> {
+  const id = newId('rule');
+  const r: import('./types').AutomationRule = { ...data, id, runCount: 0, createdAt: Date.now() };
+  await redis.set(`rule:${id}`, r);
+  await redis.zadd(`rules:${data.userId}`, { score: Date.now(), member: id });
+  return r;
+}
+
+export async function updateAutomationRule(id: string, patch: Partial<import('./types').AutomationRule>): Promise<import('./types').AutomationRule | null> {
+  const existing = (await redis.get(`rule:${id}`)) as import('./types').AutomationRule | null;
+  if (!existing) return null;
+  const updated = { ...existing, ...patch };
+  await redis.set(`rule:${id}`, updated);
+  return updated;
+}
+
+export async function deleteAutomationRule(id: string, userId: string): Promise<void> {
+  await redis.del(`rule:${id}`);
+  await redis.zrem(`rules:${userId}`, id);
+}
+
+// Run automation rules when an event happens
+export async function fireAutomations(
+  userId: string,
+  event: import('./types').AutomationRule['trigger'],
+  context: { lead?: Lead; job?: Job; invoice?: any; from?: string; to?: string }
+): Promise<void> {
+  const rules = await listAutomationRules(userId);
+  for (const r of rules.filter((r) => r.enabled && r.trigger === event)) {
+    let shouldRun = true;
+    if (event === 'lead-status-changed') {
+      if (r.conditions.from && r.conditions.from !== context.from) shouldRun = false;
+      if (r.conditions.to && r.conditions.to !== context.to) shouldRun = false;
+    }
+    if (!shouldRun) continue;
+
+    try {
+      if (r.action === 'create-task') {
+        const title = (r.actionConfig.title || 'Follow up').replace('{{name}}', context.lead?.name || context.job?.customerName || '');
+        const dueOffsetDays = Number(r.actionConfig.dueDays) || 0;
+        await createTask({
+          userId,
+          title,
+          notes: r.actionConfig.notes,
+          priority: r.actionConfig.priority || 'normal',
+          dueAt: dueOffsetDays > 0 ? Date.now() + dueOffsetDays * 86_400_000 : undefined,
+          leadId: context.lead?.id,
+          jobId: context.job?.id,
+        });
+      } else if (r.action === 'send-notification') {
+        const title = (r.actionConfig.title || `Rule fired: ${r.name}`).slice(0, 80);
+        const message = (r.actionConfig.message || 'Automation triggered').slice(0, 200);
+        await createNotification({
+          userId,
+          type: 'system',
+          title,
+          message,
+          link: context.lead ? `/leads/${context.lead.id}` : undefined,
+        });
+      } else if (r.action === 'auto-invoice' && context.job) {
+        const customerName = context.job.customerName;
+        await createInvoice({
+          userId,
+          jobId: context.job.id,
+          customerId: context.job.customerId,
+          customerName,
+          amount: context.job.value,
+          status: 'draft',
+          lineItems: [{ description: context.job.notes || `${context.job.type} services`, amount: context.job.value }],
+        });
+      } else if (r.action === 'add-tag' && context.lead && r.actionConfig.tag) {
+        const tags = [...(context.lead.tags || []), r.actionConfig.tag];
+        await updateLead(context.lead.id, { tags });
+      }
+
+      // Update rule stats
+      await updateAutomationRule(r.id, { runCount: r.runCount + 1, lastRunAt: Date.now() });
+    } catch (e) {
+      console.error('Automation rule failed:', e);
+    }
+  }
+}
+
+// ─── SAVED VIEWS ─────────────────────────────
+export async function listSavedViews(userId: string, resource?: string): Promise<import('./types').SavedView[]> {
+  const ids = (await redis.zrange(`views:${userId}`, 0, -1)) as string[];
+  if (!ids.length) return [];
+  const items = await Promise.all(ids.map((id) => redis.get(`view:${id}`)));
+  let views = items.filter(Boolean) as import('./types').SavedView[];
+  if (resource) views = views.filter((v) => v.resource === resource);
+  return views;
+}
+
+export async function createSavedView(data: Omit<import('./types').SavedView, 'id' | 'createdAt'>): Promise<import('./types').SavedView> {
+  const id = newId('view');
+  const v: import('./types').SavedView = { ...data, id, createdAt: Date.now() };
+  await redis.set(`view:${id}`, v);
+  await redis.zadd(`views:${data.userId}`, { score: Date.now(), member: id });
+  return v;
+}
+
+export async function deleteSavedView(id: string, userId: string): Promise<void> {
+  await redis.del(`view:${id}`);
+  await redis.zrem(`views:${userId}`, id);
 }
 
 // ─── DEMO SEED ───────────────────────────────
