@@ -74,3 +74,115 @@ export async function writeFollowUp(input: {
   const block = msg.content[0];
   return block.type === 'text' ? block.text : '';
 }
+
+// ─── ADVANCED AI ────────────────────────────────────────────
+
+export async function scoreLeads(input: {
+  leads: Array<{ id: string; name: string; status: string; type: string; value: number; source?: string; notes?: string; quote?: string; address?: string; createdAt: number; updatedAt: number; }>;
+  trade: string;
+  businessName: string;
+}): Promise<Array<{ id: string; score: number; reasoning: string }>> {
+  if (input.leads.length === 0) return [];
+
+  const leadSummary = input.leads.map((l, i) => {
+    const ageHours = Math.floor((Date.now() - l.createdAt) / 3600000);
+    const idleHours = Math.floor((Date.now() - l.updatedAt) / 3600000);
+    return `${i + 1}. ${l.id} | ${l.name} | ${l.status} | ${l.type} | $${l.value} | source: ${l.source || 'unknown'} | age: ${ageHours}h | idle: ${idleHours}h | quote_sent: ${!!l.quote} | notes: ${(l.notes || '').slice(0, 80)}`;
+  }).join('\n');
+
+  const msg = await client.messages.create({
+    model: MODEL,
+    max_tokens: 2000,
+    system: `You score leads for ${input.businessName}, a ${input.trade} business. For each lead, give a close-probability score from 0-100 and a one-sentence reasoning. Consider: time-since-contact (cold = lower), quote sent = higher, source quality (referrals > yard signs > random), value vs typical (huge values often less likely), idle time, and stage in pipeline. Return JSON only.`,
+    messages: [
+      {
+        role: 'user',
+        content: `Score these leads. Return ONLY valid JSON in this exact format:\n[{"id":"lead_xxx","score":75,"reasoning":"Quote sent 2 days ago, warm referral, typical job size"}, ...]\n\nLeads:\n${leadSummary}`,
+      },
+    ],
+  });
+  const block = msg.content[0];
+  const raw = block.type === 'text' ? block.text : '';
+  // Strip code fences and parse
+  const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```$/, '').trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    // Try to find JSON array in output
+    const match = cleaned.match(/\[[\s\S]*\]/);
+    if (match) {
+      try { return JSON.parse(match[0]); } catch {}
+    }
+    return [];
+  }
+}
+
+export async function dailyBriefing(input: {
+  businessName: string;
+  trade: string;
+  stats: any;
+  newLeads: any[];
+  staleLeads: any[];
+  todayJobs: any[];
+  overdueInvoices: any[];
+  newReviews: any[];
+}): Promise<string> {
+  const ctx = JSON.stringify({
+    stats: input.stats,
+    new_leads_today: input.newLeads.slice(0, 5).map((l) => `${l.name} ($${l.value}, ${l.source || 'unknown'})`),
+    stale_leads: input.staleLeads.slice(0, 5).map((l) => `${l.name} (${l.status}, idle ${Math.floor((Date.now() - l.updatedAt) / 3600000)}h)`),
+    todays_jobs: input.todayJobs.map((j) => `${new Date(j.scheduledFor).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} ${j.customerName} ($${j.value})`),
+    overdue_invoices: input.overdueInvoices.slice(0, 5).map((i) => `${i.customerName}: $${i.amount}`),
+    new_reviews: input.newReviews.slice(0, 5).map((r) => `${r.rating}★ from ${r.customer}`),
+  });
+
+  const msg = await client.messages.create({
+    model: MODEL,
+    max_tokens: 600,
+    system: `You are the operations briefing AI for ${input.businessName}, a ${input.trade} business in Northwest Ohio. Write a sharp, scannable morning briefing. Plainspoken, direct, friendly. Like a chief of staff who respects the owner's time. Use short bullets. Lead with what needs attention TODAY.`,
+    messages: [
+      {
+        role: 'user',
+        content: `Write today's briefing using this data:\n\n${ctx}\n\nFormat:\n**Today's bottom line:** [one sentence]\n\n**Needs your attention:**\n- [bullet]\n- [bullet]\n\n**Today's schedule:**\n- [bullet]\n\n**Wins:** (only if any)\n- [bullet]\n\nKeep it under 200 words. Don't repeat the data verbatim — synthesize it.`,
+      },
+    ],
+  });
+  const block = msg.content[0];
+  return block.type === 'text' ? block.text : '';
+}
+
+export async function suggestPrice(input: {
+  jobDescription: string;
+  trade: string;
+  similarJobs: Array<{ description: string; value: number }>;
+  businessName: string;
+}): Promise<{ suggested: number; reasoning: string; range: { low: number; high: number } }> {
+  const similar = input.similarJobs.length > 0
+    ? input.similarJobs.slice(0, 10).map((j) => `- "${j.description}" → $${j.value}`).join('\n')
+    : 'No similar past jobs in history.';
+
+  const msg = await client.messages.create({
+    model: MODEL,
+    max_tokens: 400,
+    system: `You suggest prices for a ${input.trade} business in Northwest Ohio. Respond ONLY with valid JSON: {"suggested":250,"low":200,"high":300,"reasoning":"..."}`,
+    messages: [
+      {
+        role: 'user',
+        content: `Suggest a price for this new job:\n"${input.jobDescription}"\n\nPast similar jobs from this business:\n${similar}\n\nReturn JSON only.`,
+      },
+    ],
+  });
+  const block = msg.content[0];
+  const raw = block.type === 'text' ? block.text : '{}';
+  const cleaned = raw.replace(/^```json\s*/i, '').replace(/```$/, '').trim();
+  try {
+    const parsed = JSON.parse(cleaned);
+    return {
+      suggested: Number(parsed.suggested) || 0,
+      range: { low: Number(parsed.low) || 0, high: Number(parsed.high) || 0 },
+      reasoning: parsed.reasoning || '',
+    };
+  } catch {
+    return { suggested: 0, range: { low: 0, high: 0 }, reasoning: 'Could not parse suggestion' };
+  }
+}
