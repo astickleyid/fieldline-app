@@ -256,44 +256,87 @@ export default function DashboardPage() {
 }
 
 function QuickQuote() {
+  const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
-  const [quote, setQuote] = useState('');
+  const [value, setValue] = useState('');
   const [loading, setLoading] = useState(false);
+  const [createdLeadId, setCreatedLeadId] = useState<string | null>(null);
 
-  async function generate() {
-    if (!desc.trim()) return;
-    setLoading(true); setQuote('');
+  async function quickAdd() {
+    if (!name.trim() || !desc.trim()) return;
+    setLoading(true); setCreatedLeadId(null);
     try {
-      const res = await fetch('/api/ai/quote', {
+      // Step 1: Create lead
+      const leadRes = await fetch('/api/leads', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobDescription: desc }),
+        body: JSON.stringify({
+          name, notes: desc,
+          value: Number(value) || 0,
+          status: 'new',
+          type: 'lawn',
+          source: 'Quick add',
+        }),
       });
-      const data = await res.json();
-      setQuote(data.quote || data.error || 'No response');
-    } catch (e: any) { setQuote('Error: ' + e.message); }
-    finally { setLoading(false); }
+      const leadData = await leadRes.json();
+      const leadId = leadData.lead?.id;
+      if (!leadId) throw new Error('Lead creation failed');
+
+      // Step 2: Generate quote (which auto-moves to "quoted")
+      await fetch('/api/ai/quote', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobDescription: desc, leadId }),
+      });
+
+      setCreatedLeadId(leadId);
+      setName(''); setDesc(''); setValue('');
+    } catch (e: any) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <div>
       <div className="flex items-center gap-2 mb-3">
-        <span className="font-mono text-[10px] text-signal uppercase tracking-wider">⚡ Quick AI Quote</span>
-        <span className="text-[10px] text-paper-dim font-mono">— for testing, not saved to a lead</span>
+        <span className="font-mono text-[10px] text-signal uppercase tracking-wider">⚡ Quick Add Lead + AI Quote</span>
+        <span className="text-[10px] text-paper-dim font-mono">— creates a real lead with an AI-generated quote in one click</span>
       </div>
-      <div className="flex gap-2 mb-3">
-        <input
-          type="text" value={desc}
-          onChange={(e) => setDesc(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && generate()}
-          placeholder="e.g. Weekly mowing for 0.4 acre property in Maumee"
-          className="flex-1 bg-ink border border-rule rounded-md px-3 py-2 text-paper text-sm placeholder-paper-dim outline-none focus:border-signal/40"
-        />
-        <button onClick={generate} disabled={loading || !desc.trim()} className="px-4 py-2 bg-signal hover:bg-signal-bright text-white rounded-md text-sm font-medium disabled:opacity-50">
-          {loading ? '...' : 'Generate →'}
-        </button>
-      </div>
-      {quote && (
-        <div className="bg-ink border border-rule rounded-md p-3 font-mono text-xs text-paper leading-relaxed whitespace-pre-wrap fade-up">{quote}</div>
+      {createdLeadId ? (
+        <div className="bg-acid/10 border border-acid/30 rounded-md p-3 fade-up flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm text-acid font-mono">✓ Lead created and quoted</div>
+            <div className="text-xs text-paper-mute mt-0.5">Click below to view, edit, or send to customer</div>
+          </div>
+          <Link href={`/leads/${createdLeadId}`} className="px-3 py-1.5 bg-signal hover:bg-signal-bright text-white rounded-md text-xs font-medium whitespace-nowrap">
+            View Lead →
+          </Link>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr_auto_auto] gap-2">
+          <input
+            type="text" value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Customer name"
+            className="bg-ink border border-rule rounded-md px-3 py-2 text-paper text-sm placeholder-paper-dim outline-none focus:border-signal/40"
+          />
+          <input
+            type="text" value={desc}
+            onChange={(e) => setDesc(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && quickAdd()}
+            placeholder="Job description (e.g. weekly mowing 0.4 acre property)"
+            className="bg-ink border border-rule rounded-md px-3 py-2 text-paper text-sm placeholder-paper-dim outline-none focus:border-signal/40"
+          />
+          <input
+            type="number" value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="$"
+            className="w-20 bg-ink border border-rule rounded-md px-3 py-2 text-paper text-sm placeholder-paper-dim outline-none focus:border-signal/40"
+          />
+          <button onClick={quickAdd} disabled={loading || !name.trim() || !desc.trim()} className="px-4 py-2 bg-signal hover:bg-signal-bright text-white rounded-md text-sm font-medium disabled:opacity-50 whitespace-nowrap">
+            {loading ? '...' : 'Add + Quote →'}
+          </button>
+        </div>
       )}
     </div>
   );
