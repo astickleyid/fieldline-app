@@ -9,8 +9,10 @@ const links = [
   { href: '/leads', label: 'Pipeline', icon: '▤' },
   { href: '/customers', label: 'Customers', icon: '◉' },
   { href: '/calendar', label: 'Schedule', icon: '▦' },
+  { href: '/map', label: 'Map', icon: '◯' },
   { href: '/invoices', label: 'Invoices', icon: '$' },
   { href: '/reviews', label: 'Reviews', icon: '★' },
+  { href: '/analytics', label: 'Analytics', icon: '◎' },
   { href: '/activity', label: 'Activity', icon: '↺' },
   { href: '/settings', label: 'Settings', icon: '⚙' },
 ];
