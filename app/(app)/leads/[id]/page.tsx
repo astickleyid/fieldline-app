@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { useShell } from '@/components/AppShell';
+import { useToast } from '@/components/Toast';
 import TopBar from '@/components/TopBar';
 
 type LeadStatus = 'new' | 'quoted' | 'booked' | 'completed' | 'lost';
@@ -42,6 +43,7 @@ export default function LeadDetailPage() {
   const router = useRouter();
   const leadId = params.id as string;
   const { openSidebar } = useShell();
+  const { toast } = useToast();
 
   const [lead, setLead] = useState<Lead | null>(null);
   const [activity, setActivity] = useState<Activity[]>([]);
@@ -72,7 +74,17 @@ export default function LeadDetailPage() {
   const [acceptUrl, setAcceptUrl] = useState('');
   const [generatingLink, setGeneratingLink] = useState(false);
 
-  useEffect(() => { load(); }, [leadId]);
+  useEffect(() => {
+    load();
+    const onFocus = () => quietReload();
+    const onVis = () => { if (document.visibilityState === 'visible') quietReload(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [leadId]);
 
   async function load() {
     setLoading(true);
@@ -97,6 +109,7 @@ export default function LeadDetailPage() {
     });
     setSaving(false);
     setEditing(false);
+    toast('Lead updated');
     quietReload();
   }
 
@@ -127,6 +140,9 @@ export default function LeadDetailPage() {
     // Optimistic update — show quote and status change instantly
     if (data.quote) {
       setLead({ ...lead, quote: data.quote, quoteGeneratedAt: Date.now(), status: 'quoted' });
+      toast('Quote generated · status moved to Quoted');
+    } else if (data.error) {
+      toast(data.error, 'error');
     }
     // Then refresh activity timeline in background (no loading flash)
     quietReload();
@@ -166,14 +182,19 @@ export default function LeadDetailPage() {
       body: JSON.stringify({ leadName: lead.name, daysSinceQuote: days, jobDescription: `${lead.type} job — ${lead.notes || ''}` }),
     });
     const data = await res.json();
-    setFollowUp(data.message || data.error || 'Error');
+    if (data.message) {
+      setFollowUp(data.message);
+      navigator.clipboard.writeText(data.message).then(() => toast('Follow-up copied to clipboard'));
+    } else {
+      toast(data.error || 'Could not generate follow-up', 'error');
+    }
     setFollowUpLoading(false);
   }
 
   async function bookJob() {
     if (!lead) return;
     setBooking(true);
-    await fetch(`/api/leads/${lead.id}/book`, {
+    const res = await fetch(`/api/leads/${lead.id}/book`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -183,7 +204,12 @@ export default function LeadDetailPage() {
     });
     setBooking(false);
     setShowBook(false);
-    quietReload();
+    if (res.ok) {
+      toast('Job booked · status moved to Booked');
+      quietReload();
+    } else {
+      toast('Could not book job', 'error');
+    }
   }
 
   async function addNote() {
