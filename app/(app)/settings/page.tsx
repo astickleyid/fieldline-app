@@ -110,6 +110,34 @@ export default function SettingsPage() {
             </section>
 
             <section className="bg-ink-2 border border-rule rounded-lg p-5">
+              <div className="font-mono text-[10px] text-paper-mute tracking-wider uppercase mb-2">Public Booking Link</div>
+              <p className="text-xs text-paper-mute mb-3 leading-relaxed">
+                Share this link on your website, business cards, or social media. Anyone who visits it can request a quote — and it lands directly in your pipeline.
+              </p>
+              {user?.id && typeof window !== 'undefined' && (
+                <div className="space-y-2">
+                  <div className="bg-ink border border-rule rounded-md p-2 font-mono text-[11px] text-paper break-all">
+                    {window.location.origin}/book/{user.id}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => navigator.clipboard.writeText(`${window.location.origin}/book/${user.id}`)}
+                      className="px-3 py-1.5 border border-rule text-paper-mute hover:text-paper rounded-md text-xs">
+                      Copy Link
+                    </button>
+                    <a
+                      href={`/book/${user.id}`}
+                      target="_blank"
+                      rel="noopener"
+                      className="px-3 py-1.5 border border-rule text-paper-mute hover:text-paper rounded-md text-xs">
+                      Preview →
+                    </a>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            <section className="bg-ink-2 border border-rule rounded-lg p-5">
               <div className="font-mono text-[10px] text-paper-mute tracking-wider uppercase mb-3">Pilot Status</div>
               <div className="flex items-center gap-2 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-acid animate-pulse"/>
