@@ -21,7 +21,17 @@ export default function NotificationsPage() {
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const { openSidebar } = useShell();
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const onFocus = () => load();
+    const onVis = () => { if (document.visibilityState === 'visible') load(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, []);
   async function load() {
     // Refresh first to generate any new system notifications
     const res = await fetch('/api/notifications?refresh=1');
