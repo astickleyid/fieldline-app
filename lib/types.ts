@@ -44,7 +44,7 @@ export interface Customer {
 export interface Lead {
   id: string;
   userId: string;
-  customerId?: string; // Linked when converted/repeat
+  customerId?: string;
   name: string;
   phone?: string;
   email?: string;
@@ -57,6 +57,11 @@ export interface Lead {
   tags?: string[];
   quote?: string;
   quoteGeneratedAt?: number;
+  quoteAcceptedAt?: number;
+  quoteAcceptToken?: string;
+  aiScore?: number;
+  aiScoreReasoning?: string;
+  aiScoredAt?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -123,9 +128,27 @@ export interface Activity {
 
 export interface AILogEntry {
   id: string;
-  type: 'quote' | 'review-reply' | 'follow-up';
+  type: 'quote' | 'review-reply' | 'follow-up' | 'lead-scoring' | 'briefing' | 'pricing';
   summary: string;
   timestamp: number;
+}
+
+export interface Briefing {
+  text: string;
+  generatedAt: number;
+  date: string; // YYYY-MM-DD
+}
+
+export interface WorkflowRule {
+  id: string;
+  userId: string;
+  name: string;
+  trigger: 'lead-status-changed' | 'quote-generated' | 'job-scheduled' | 'job-completed';
+  triggerCondition?: { from?: string; to?: string };
+  action: 'create-followup-task' | 'send-notification' | 'auto-invoice' | 'tag-lead';
+  actionConfig?: Record<string, any>;
+  enabled: boolean;
+  createdAt: number;
 }
 
 export interface Stats {
