@@ -27,24 +27,35 @@ export default function DashboardPage() {
     return () => clearInterval(t);
   }, []);
 
-  useEffect(() => {
-    Promise.all([
+  async function loadDashboard() {
+    const [s, l, j, b] = await Promise.all([
       fetch('/api/stats').then((r) => r.json()),
       fetch('/api/leads').then((r) => r.json()),
       fetch('/api/jobs').then((r) => r.json()),
       fetch('/api/ai/briefing').then((r) => r.json()),
-    ]).then(([s, l, j, b]) => {
-      setStats(s.stats);
-      setAILog(s.aiLog || []);
-      setLeads(l.leads || []);
-      setBriefing(b.briefing);
-      const today = new Date(); today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
-      const todays = (j.jobs || []).filter((job: Job) => job.scheduledFor >= today.getTime() && job.scheduledFor < tomorrow.getTime())
-        .sort((a: Job, b: Job) => a.scheduledFor - b.scheduledFor);
-      setTodayJobs(todays);
-      setLoading(false);
-    });
+    ]);
+    setStats(s.stats);
+    setAILog(s.aiLog || []);
+    setLeads(l.leads || []);
+    setBriefing(b.briefing);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+    const todays = (j.jobs || []).filter((job: Job) => job.scheduledFor >= today.getTime() && job.scheduledFor < tomorrow.getTime())
+      .sort((a: Job, b: Job) => a.scheduledFor - b.scheduledFor);
+    setTodayJobs(todays);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadDashboard();
+    const onFocus = () => loadDashboard();
+    const onVis = () => { if (document.visibilityState === 'visible') loadDashboard(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, []);
 
   async function generateBriefing() {
