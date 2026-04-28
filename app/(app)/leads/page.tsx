@@ -13,6 +13,8 @@ type Lead = {
   type: 'lawn' | 'hvac' | 'plumb' | 'other';
   value: number;
   notes?: string;
+  quote?: string;
+  quoteGeneratedAt?: number;
   createdAt: number;
 };
 
@@ -149,10 +151,19 @@ function LeadCard({ lead, onClick, onMove }: { lead: Lead; onClick: () => void; 
         </span>
       </div>
       {lead.address && <div className="text-[11px] text-paper-mute truncate mb-2">{lead.address}</div>}
-      <div className="flex justify-between items-center">
-        <span className={`font-mono text-[9px] uppercase px-1.5 py-0.5 rounded ${tagColor}`}>
-          {lead.type}
-        </span>
+      <div className="flex justify-between items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <span className={`font-mono text-[9px] uppercase px-1.5 py-0.5 rounded ${tagColor}`}>
+            {lead.type}
+          </span>
+          {lead.quote && (
+            <span
+              title="AI quote saved"
+              className="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded bg-signal/10 text-signal border border-signal/20">
+              ⚡ quote
+            </span>
+          )}
+        </div>
         {next && (
           <button
             onClick={(e) => { e.stopPropagation(); onMove(next); }}
@@ -183,7 +194,8 @@ function LeadFormModal({ lead, onClose, onSaved }: { lead?: Lead; onClose: () =>
   const [saving, setSaving] = useState(false);
 
   // AI quote helper
-  const [quote, setQuote] = useState('');
+  const [quote, setQuote] = useState(lead?.quote || '');
+  const [quoteAt, setQuoteAt] = useState<number | undefined>(lead?.quoteGeneratedAt);
   const [genLoading, setGenLoading] = useState(false);
 
   // Book job state
@@ -234,11 +246,43 @@ function LeadFormModal({ lead, onClose, onSaved }: { lead?: Lead; onClose: () =>
     const res = await fetch('/api/ai/quote', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jobDescription: desc }),
+      body: JSON.stringify({ jobDescription: desc, leadId: lead?.id }),
     });
     const data = await res.json();
-    setQuote(data.quote || 'Error generating quote');
+    const generated = data.quote || 'Error generating quote';
+    setQuote(generated);
+    setQuoteAt(Date.now());
+    if (lead) {
+      // refresh parent list so card shows quoted status
+      onSaved();
+      // bump local status if it was new
+      if (status === 'new') setStatus('quoted');
+    }
     setGenLoading(false);
+  }
+
+  async function resetQuote() {
+    if (!lead) {
+      setQuote('');
+      setQuoteAt(undefined);
+      return;
+    }
+    if (!confirm('Clear this saved quote?')) return;
+    await fetch(`/api/leads/${lead.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quote: '', quoteGeneratedAt: 0 }),
+    });
+    setQuote('');
+    setQuoteAt(undefined);
+    onSaved();
+  }
+
+  async function copyQuote() {
+    if (!quote) return;
+    try {
+      await navigator.clipboard.writeText(quote);
+    } catch {}
   }
 
   async function remove() {
@@ -351,20 +395,47 @@ function LeadFormModal({ lead, onClose, onSaved }: { lead?: Lead; onClose: () =>
             </div>
           )}
 
-          {/* AI Quote button */}
+          {/* AI Quote */}
           <div className="border-t border-rule pt-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="font-mono text-[10px] text-signal tracking-wider uppercase">⚡ AI Quote</span>
-              <button
-                onClick={generateQuote}
-                disabled={genLoading || !name}
-                className="text-[11px] text-signal hover:text-signal-bright font-medium disabled:opacity-40">
-                {genLoading ? 'Generating...' : 'Generate quote →'}
-              </button>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-[10px] text-signal tracking-wider uppercase">⚡ AI Quote</span>
+                {quoteAt && (
+                  <span className="font-mono text-[10px] text-paper-dim">
+                    saved · {new Date(quoteAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                {quote && (
+                  <button
+                    onClick={copyQuote}
+                    className="text-[11px] text-paper-mute hover:text-paper font-medium">
+                    Copy
+                  </button>
+                )}
+                {quote && (
+                  <button
+                    onClick={resetQuote}
+                    className="text-[11px] text-paper-mute hover:text-red-400 font-medium">
+                    Reset
+                  </button>
+                )}
+                <button
+                  onClick={generateQuote}
+                  disabled={genLoading || !name}
+                  className="text-[11px] text-signal hover:text-signal-bright font-medium disabled:opacity-40">
+                  {genLoading ? 'Generating...' : quote ? 'Regenerate →' : 'Generate quote →'}
+                </button>
+              </div>
             </div>
-            {quote && (
+            {quote ? (
               <div className="bg-ink border border-rule rounded-md p-3 font-mono text-xs text-paper leading-relaxed whitespace-pre-wrap fade-up">
                 {quote}
+              </div>
+            ) : (
+              <div className="bg-ink border border-dashed border-rule rounded-md p-4 text-center">
+                <div className="text-[11px] text-paper-dim italic">No quote yet — click Generate to create one in your voice.</div>
               </div>
             )}
           </div>
