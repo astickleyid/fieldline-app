@@ -26,3 +26,5 @@ CRM SaaS for trade businesses (lawn care, HVAC, plumbing) in NW Ohio / SE Michig
 - Mobile-responsive
 
 Build: v0.5.1
+
+<!-- deploy: 1777379288 -->
