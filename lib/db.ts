@@ -536,6 +536,83 @@ export async function refreshNotifications(userId: string): Promise<void> {
   const existing = await listNotifications(userId, 200);
   const has = (key: string) => existing.some((n) => n.id.includes(key) || n.message.includes(key));
 
+  // Fire lead-stale automations (never fired automatically before this)
+  const rules = await listAutomationRules(userId);
+  const staleRules = rules.filter((r) => r.enabled && r.trigger === 'lead-stale');
+  for (const rule of staleRules) {
+    const minDays = Number(rule.conditions.daysIdle || 3);
+    const stale = leads.filter((l) =>
+      (l.status === 'new' || l.status === 'quoted') &&
+      Date.now() - l.updatedAt > minDays * dayMs
+    );
+    for (const lead of stale) {
+      const fireKey = `automation:stale:${rule.id}:${lead.id}`;
+      const lastFiredKey = `lastfire:${rule.id}:${lead.id}`;
+      const lastFired = await redis.get(lastFiredKey);
+      if (lastFired && Date.now() - Number(lastFired) < 7 * dayMs) continue; // throttle to weekly
+      try {
+        if (rule.action === 'create-task') {
+          const title = (rule.actionConfig.title || 'Follow up').replace('{{name}}', lead.name);
+          await createTask({
+            userId, title,
+            notes: rule.actionConfig.notes,
+            priority: rule.actionConfig.priority || 'normal',
+            leadId: lead.id,
+          });
+        } else if (rule.action === 'send-notification') {
+          await createNotification({
+            userId, type: 'system',
+            title: rule.actionConfig.title || 'Stale lead',
+            message: `${lead.name}: ${rule.actionConfig.message || `idle ${minDays}+ days`}`,
+            link: `/leads/${lead.id}`,
+          });
+        } else if (rule.action === 'add-tag' && rule.actionConfig.tag) {
+          const tags = [...(lead.tags || []), rule.actionConfig.tag];
+          await updateLead(lead.id, { tags });
+        }
+        await redis.set(lastFiredKey, Date.now().toString());
+        await updateAutomationRule(rule.id, { runCount: rule.runCount + 1, lastRunAt: Date.now() });
+      } catch (e) { console.error('stale rule failed', e); }
+    }
+  }
+
+  // Mark invoices overdue if past due date
+  for (const inv of invoices) {
+    if (inv.status === 'sent' && inv.dueDate && Date.now() > inv.dueDate) {
+      await updateInvoice(inv.id, { status: 'overdue' });
+      inv.status = 'overdue'; // reflect in this snapshot
+    }
+  }
+
+  // Fire invoice-overdue automations
+  const overdueRules = rules.filter((r) => r.enabled && r.trigger === 'invoice-overdue');
+  for (const rule of overdueRules) {
+    for (const inv of invoices.filter((i) => i.status === 'overdue')) {
+      const lastFiredKey = `lastfire:${rule.id}:${inv.id}`;
+      const lastFired = await redis.get(lastFiredKey);
+      if (lastFired && Date.now() - Number(lastFired) < 3 * dayMs) continue; // every 3 days
+      try {
+        if (rule.action === 'send-notification') {
+          await createNotification({
+            userId, type: 'overdue-invoice',
+            title: rule.actionConfig.title || 'Invoice still overdue',
+            message: `${inv.customerName}: $${inv.amount}`,
+            link: '/invoices',
+          });
+        } else if (rule.action === 'create-task') {
+          await createTask({
+            userId,
+            title: (rule.actionConfig.title || 'Chase overdue invoice').replace('{{name}}', inv.customerName),
+            priority: 'high',
+            customerId: inv.customerId,
+          });
+        }
+        await redis.set(lastFiredKey, Date.now().toString());
+        await updateAutomationRule(rule.id, { runCount: rule.runCount + 1, lastRunAt: Date.now() });
+      } catch (e) { console.error('overdue rule failed', e); }
+    }
+  }
+
   // Stale leads
   for (const l of leads.filter((l) => (l.status === 'new' || l.status === 'quoted') && Date.now() - l.updatedAt > 7 * dayMs)) {
     if (!has(`stale:${l.id}`)) {
