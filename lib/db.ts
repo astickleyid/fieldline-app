@@ -174,6 +174,17 @@ export async function deleteLead(leadId: string, userId: string): Promise<void> 
   await redis.zrem(`leads:${userId}`, leadId);
 }
 
+export async function getLeadByQuoteToken(token: string): Promise<Lead | null> {
+  const leadId = (await redis.get(`quotetoken:${token}`)) as string | null;
+  if (!leadId) return null;
+  return getLead(leadId);
+}
+
+export async function setLeadQuoteToken(leadId: string, token: string): Promise<void> {
+  await redis.set(`quotetoken:${token}`, leadId);
+  await updateLead(leadId, { quoteAcceptToken: token });
+}
+
 // ─── JOBS ────────────────────────────────────
 export async function listJobs(userId: string): Promise<Job[]> {
   const ids = (await redis.zrange(`jobs:${userId}`, 0, -1)) as string[];
