@@ -1,60 +1,142 @@
-import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/session';
-import { getUserById } from '@/lib/db';
+'use client';
 
-export default async function SettingsPage() {
-  const session = await getSession();
-  if (!session.userId) redirect('/login');
-  const user = await getUserById(session.userId);
+import { useEffect, useState } from 'react';
+import TopBar from '@/components/TopBar';
+import { useShell } from '@/components/AppShell';
+
+export default function SettingsPage() {
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState<any>({});
+  const [saving, setSaving] = useState(false);
+  const [savedNotice, setSavedNotice] = useState(false);
+  const { openSidebar } = useShell();
+
+  useEffect(() => {
+    fetch('/api/stats').then(() => {
+      // Stats endpoint requires auth, so if it works we're auth'd
+      // Now fetch user info — we'll use a custom endpoint via stats
+    });
+    // Just fetch user via search endpoint that returns nothing on empty query
+    // Easier: use the customers endpoint and infer from session, or build /api/me
+    // For now, just hit /api/auth/me (we'll add this)
+    fetch('/api/auth/me').then((r) => r.json()).then((d) => {
+      setUser(d.user);
+      setForm(d.user || {});
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    const res = await fetch('/api/auth/me', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    });
+    const data = await res.json();
+    if (data.user) {
+      setUser(data.user);
+      setEditing(false);
+      setSavedNotice(true);
+      setTimeout(() => setSavedNotice(false), 2000);
+    }
+    setSaving(false);
+  }
 
   return (
     <div>
-      <div className="border-b border-rule px-6 h-14 flex items-center sticky top-0 bg-ink/80 backdrop-blur-md z-30">
-        <div>
-          <h1 className="text-base font-medium">Settings</h1>
-          <div className="font-mono text-[10px] text-paper-dim tracking-wider mt-0.5">ACCOUNT &amp; AI CONFIGURATION</div>
-        </div>
-      </div>
-
-      <div className="p-6 max-w-2xl space-y-4">
-        <section className="bg-ink-2 border border-rule rounded-lg p-5">
-          <div className="font-mono text-[10px] text-paper-mute tracking-wider uppercase mb-3">Account</div>
-          <Row label="Business Name" value={user?.businessName || '—'} />
-          <Row label="Email" value={user?.email || '—'} />
-          <Row label="Trade" value={user?.trade?.toUpperCase() || '—'} />
-          <Row label="Phone" value={user?.phone || '—'} />
-          <Row label="User ID" value={user?.id || '—'} mono />
-          <Row label="Member since" value={user ? new Date(user.createdAt).toLocaleDateString() : '—'} />
-        </section>
-
-        <section className="bg-ink-2 border border-rule rounded-lg p-5">
-          <div className="font-mono text-[10px] text-paper-mute tracking-wider uppercase mb-3">AI Voice (coming soon)</div>
-          <p className="text-xs text-paper-mute leading-relaxed">
-            Train Fieldline's AI to write quotes and reviews in your voice. Paste a few examples of how you'd write to customers. AI will match your tone, slang, and style.
-          </p>
-          <button disabled className="mt-3 px-3 py-1.5 text-xs border border-rule rounded-md text-paper-dim cursor-not-allowed">
-            Configure voice →
-          </button>
-        </section>
-
-        <section className="bg-ink-2 border border-rule rounded-lg p-5">
-          <div className="font-mono text-[10px] text-paper-mute tracking-wider uppercase mb-3">Pilot status</div>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-acid animate-pulse"/>
-            <span className="text-xs text-acid font-mono tracking-wide">PILOT ACTIVE</span>
+      <TopBar
+        title="Settings"
+        subtitle="ACCOUNT & AI CONFIGURATION"
+        onMenuClick={openSidebar}
+        action={
+          <div className="flex items-center gap-2">
+            {savedNotice && <span className="text-acid font-mono text-[10px] tracking-wider">✓ SAVED</span>}
+            {editing ? (
+              <>
+                <button onClick={() => { setEditing(false); setForm(user); }} className="px-3 py-1.5 text-xs text-paper-mute hover:text-paper">Cancel</button>
+                <button onClick={save} disabled={saving} className="px-3 py-1.5 bg-signal hover:bg-signal-bright text-white rounded-md text-xs font-medium">{saving ? '...' : 'Save'}</button>
+              </>
+            ) : (
+              <button onClick={() => setEditing(true)} className="px-3 py-1.5 bg-paper-dim hover:bg-rule text-paper rounded-md text-xs font-medium">Edit</button>
+            )}
           </div>
-          <p className="text-xs text-paper-mute leading-relaxed">30-day free pilot. Cancel anytime — keep your data.</p>
-        </section>
+        }
+      />
+
+      <div className="p-4 md:p-6 max-w-2xl space-y-4">
+        {loading ? (
+          <div className="text-center py-12 font-mono text-xs text-paper-mute">Loading...</div>
+        ) : (
+          <>
+            <section className="bg-ink-2 border border-rule rounded-lg p-5">
+              <div className="font-mono text-[10px] text-paper-mute tracking-wider uppercase mb-3">Business</div>
+              <div className="space-y-3">
+                <Row label="Business Name" value={editing ? <input className="bg-ink border border-rule rounded px-2 py-1 text-sm w-full" value={form.businessName || ''} onChange={(e) => setForm({ ...form, businessName: e.target.value })}/> : (user?.businessName || '—')}/>
+                <Row label="Email" value={user?.email || '—'}/>
+                <Row label="Trade" value={editing ? (
+                  <div className="flex gap-1">
+                    {(['lawn', 'hvac', 'plumb', 'other'] as const).map((t) => (
+                      <button key={t} type="button" onClick={() => setForm({ ...form, trade: t })} className={`px-2 py-1 text-[10px] uppercase rounded border ${
+                        form.trade === t ? 'border-signal bg-signal/10 text-signal' : 'border-rule text-paper-mute'
+                      }`}>{t}</button>
+                    ))}
+                  </div>
+                ) : (user?.trade?.toUpperCase() || '—')}/>
+                <Row label="Phone" value={editing ? <input className="bg-ink border border-rule rounded px-2 py-1 text-sm w-full" value={form.phone || ''} onChange={(e) => setForm({ ...form, phone: e.target.value })}/> : (user?.phone || '—')}/>
+              </div>
+            </section>
+
+            <section className="bg-ink-2 border border-rule rounded-lg p-5">
+              <div className="font-mono text-[10px] text-paper-mute tracking-wider uppercase mb-2">AI Voice</div>
+              <p className="text-xs text-paper-mute mb-3 leading-relaxed">
+                Tell Fieldline how you talk to customers. AI will match your tone in quotes, replies, and follow-ups.
+              </p>
+              {editing ? (
+                <textarea
+                  rows={4}
+                  value={form.voice || ''}
+                  onChange={(e) => setForm({ ...form, voice: e.target.value })}
+                  placeholder="e.g. Casual but professional. No corporate-speak. I keep things short and to the point. Sometimes use 'y'all'. Avoid emoji."
+                  className="w-full bg-ink border border-rule rounded-md px-3 py-2 text-paper text-sm placeholder-paper-dim outline-none focus:border-signal/40 resize-none"
+                />
+              ) : (
+                <div className="bg-ink border border-rule rounded-md p-3 text-sm text-paper">
+                  {user?.voice || <span className="text-paper-dim italic">No voice set yet — click Edit to add one.</span>}
+                </div>
+              )}
+            </section>
+
+            <section className="bg-ink-2 border border-rule rounded-lg p-5">
+              <div className="font-mono text-[10px] text-paper-mute tracking-wider uppercase mb-3">Pilot Status</div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-acid animate-pulse"/>
+                <span className="text-xs text-acid font-mono tracking-wide">PILOT ACTIVE</span>
+              </div>
+              <p className="text-xs text-paper-mute leading-relaxed">
+                Member since {user ? new Date(user.createdAt).toLocaleDateString() : '—'}.
+                Cancel anytime — your data stays yours.
+              </p>
+            </section>
+
+            <section className="bg-ink-2 border border-rule rounded-lg p-5">
+              <div className="font-mono text-[10px] text-paper-mute tracking-wider uppercase mb-3">Diagnostic</div>
+              <a href="/diagnostic" className="text-sm text-signal hover:text-signal-bright">Run system diagnostic →</a>
+            </section>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex justify-between items-center py-2 border-b border-rule last:border-0">
-      <span className="text-xs text-paper-mute">{label}</span>
-      <span className={`text-sm text-paper ${mono ? 'font-mono text-xs' : ''}`}>{value}</span>
+    <div className="flex justify-between items-center gap-3 py-1">
+      <span className="text-xs text-paper-mute shrink-0 w-32">{label}</span>
+      <span className="text-sm text-paper text-right flex-1">{value}</span>
     </div>
   );
 }
