@@ -548,7 +548,7 @@ export async function refreshNotifications(userId: string): Promise<void> {
   const rules = await listAutomationRules(userId);
   const staleRules = rules.filter((r) => r.enabled && r.trigger === 'lead-stale');
   for (const rule of staleRules) {
-    const minDays = Number(rule.conditions.daysIdle || 3);
+    const minDays = Number(rule.conditions.daysIdle ?? 3);
     const stale = leads.filter((l) =>
       (l.status === 'new' || l.status === 'quoted') &&
       Date.now() - l.updatedAt > minDays * dayMs
