@@ -195,12 +195,16 @@ export async function updateLead(leadId: string, patch: Partial<Lead>): Promise<
       `${existing.name}: ${existing.status} → ${patch.status}`,
       { leadId, metadata: { from: existing.status, to: patch.status } }
     );
-    // Fire automations
-    fireAutomations(existing.userId, 'lead-status-changed', {
-      lead: updated,
-      from: existing.status,
-      to: patch.status,
-    }).catch((e) => console.error('automation error', e));
+    // Fire automations (await so it actually runs in serverless)
+    try {
+      await fireAutomations(existing.userId, 'lead-status-changed', {
+        lead: updated,
+        from: existing.status,
+        to: patch.status,
+      });
+    } catch (e) {
+      console.error('automation error', e);
+    }
   }
   return updated;
 }
@@ -269,8 +273,12 @@ export async function updateJob(jobId: string, patch: Partial<Job>): Promise<Job
         });
       }
     }
-    // Fire automations
-    fireAutomations(existing.userId, 'job-completed', { job: updated }).catch((e) => console.error('automation error', e));
+    // Fire automations (await so it actually runs in serverless)
+    try {
+      await fireAutomations(existing.userId, 'job-completed', { job: updated });
+    } catch (e) {
+      console.error('automation error', e);
+    }
   }
   return updated;
 }
