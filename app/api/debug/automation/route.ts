@@ -32,7 +32,7 @@ export async function GET() {
         ageMs: Date.now() - l.updatedAt,
       })),
       matchingForFirstRule: staleRules[0] ? leads.filter((l) => {
-        const minDays = Number(staleRules[0].conditions.daysIdle || 3);
+        const minDays = Number(staleRules[0].conditions.daysIdle ?? 3);
         const isOpen = l.status === 'new' || l.status === 'quoted';
         const isStale = Date.now() - l.updatedAt > minDays * 86_400_000;
         return isOpen && isStale;
