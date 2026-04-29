@@ -26,29 +26,54 @@ export default function MapPage() {
   const [selected, setSelected] = useState<Job | null>(null);
   const { openSidebar } = useShell();
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const onFocus = () => load();
+    const onVis = () => { if (document.visibilityState === 'visible') load(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, []);
+
   async function load() {
     const res = await fetch('/api/jobs');
     const data = await res.json();
     let raw = data.jobs || [];
 
-    // Geocode addresses that don't have lat/lon yet
+    // Show jobs immediately with cached lat/lon
+    const cached = raw.map((j: Job) => j.lat && j.lon ? j : j);
+    setJobs(cached);
+    setLoading(false);
+
+    // Geocode any missing coords in background and persist them
+    const needsGeocode = raw.filter((j: Job) => !j.lat && !j.lon && j.address);
+    if (needsGeocode.length === 0) return;
+
     setGeocoding(true);
-    const geocoded = await Promise.all(raw.map(async (j: Job) => {
-      if (j.lat && j.lon) return j;
-      if (!j.address) return j;
+    for (const j of needsGeocode) {
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(j.address)}`);
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(j.address!)}`);
         const arr = await res.json();
         if (arr[0]) {
-          return { ...j, lat: parseFloat(arr[0].lat), lon: parseFloat(arr[0].lon) };
+          const lat = parseFloat(arr[0].lat);
+          const lon = parseFloat(arr[0].lon);
+          // Persist back so we don't re-geocode every load
+          fetch(`/api/jobs/${j.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lat, lon }),
+          }).catch(() => {});
+          // Update local state
+          setJobs((prev) => prev.map((job) => (job.id === j.id ? { ...job, lat, lon } : job)));
         }
+        // Nominatim courtesy: 1 request per second
+        await new Promise((r) => setTimeout(r, 1100));
       } catch {}
-      return j;
-    }));
+    }
     setGeocoding(false);
-    setJobs(geocoded);
-    setLoading(false);
   }
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
