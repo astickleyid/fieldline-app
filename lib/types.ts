@@ -77,6 +77,8 @@ export interface Job {
   durationMinutes: number;
   status: 'scheduled' | 'in-progress' | 'completed' | 'cancelled';
   address?: string;
+  lat?: number;
+  lon?: number;
   type: JobType;
   notes?: string;
   value: number;
