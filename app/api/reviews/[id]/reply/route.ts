@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { listReviews, updateReviewReply, getUserById, logAI } from '@/lib/db';
 import { requireUser } from '@/lib/session';
 import { replyToReview } from '@/lib/ai';
+import { friendlyAIError } from '@/lib/ai-errors';
 
 export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
   try {
@@ -19,13 +20,18 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     if (body.manual && typeof body.text === 'string') {
       reply = body.text;
     } else {
-      reply = await replyToReview({
-        reviewText: review.text,
-        rating: review.rating,
-        customer: review.customer,
-        businessName: user.businessName,
-        voice: user.voice,
-      });
+      try {
+        reply = await replyToReview({
+          reviewText: review.text,
+          rating: review.rating,
+          customer: review.customer,
+          businessName: user.businessName,
+          voice: user.voice,
+        });
+      } catch (aiErr: any) {
+        const { message: friendly, status } = friendlyAIError(aiErr);
+        return NextResponse.json({ error: friendly }, { status });
+      }
     }
 
     const updated = await updateReviewReply(userId, ctx.params.id, reply);
