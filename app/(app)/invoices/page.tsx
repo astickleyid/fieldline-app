@@ -223,6 +223,10 @@ function NewInvoiceModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
   const [customerEmail, setCustomerEmail] = useState('');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
+  const [dueDate, setDueDate] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() + 14);
+    return d.toISOString().slice(0, 10);
+  });
   const [saving, setSaving] = useState(false);
 
   async function save() {
@@ -236,7 +240,8 @@ function NewInvoiceModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
         amount: Number(amount),
         description,
         status: 'draft',
-        lineItems: [{ description, amount: Number(amount) }],
+        dueDate: dueDate ? new Date(dueDate).getTime() : undefined,
+        lineItems: [{ description: description || 'Services', amount: Number(amount) }],
       }),
     });
     setSaving(false);
@@ -252,10 +257,28 @@ function NewInvoiceModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
           <button onClick={onClose} className="text-paper-mute hover:text-paper text-xl">×</button>
         </div>
         <div className="p-5 space-y-3">
-          <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Customer name *" className="w-full bg-ink border border-rule rounded-md px-3 py-2 text-paper text-sm placeholder-paper-dim outline-none focus:border-signal/40"/>
-          <input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="Customer email" className="w-full bg-ink border border-rule rounded-md px-3 py-2 text-paper text-sm placeholder-paper-dim outline-none focus:border-signal/40"/>
-          <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description (e.g. Lawn services — June)" className="w-full bg-ink border border-rule rounded-md px-3 py-2 text-paper text-sm placeholder-paper-dim outline-none focus:border-signal/40"/>
-          <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount *" className="w-full bg-ink border border-rule rounded-md px-3 py-2 text-paper text-sm placeholder-paper-dim outline-none focus:border-signal/40"/>
+          <div>
+            <label className="font-mono text-[10px] text-paper-mute tracking-wider uppercase block mb-1.5">Customer *</label>
+            <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Customer name" className="w-full bg-ink border border-rule rounded-md px-3 py-2 text-paper text-sm placeholder-paper-dim outline-none focus:border-signal/40"/>
+          </div>
+          <div>
+            <label className="font-mono text-[10px] text-paper-mute tracking-wider uppercase block mb-1.5">Email (optional)</label>
+            <input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="customer@email.com" className="w-full bg-ink border border-rule rounded-md px-3 py-2 text-paper text-sm placeholder-paper-dim outline-none focus:border-signal/40"/>
+          </div>
+          <div>
+            <label className="font-mono text-[10px] text-paper-mute tracking-wider uppercase block mb-1.5">Description</label>
+            <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Lawn services — June" className="w-full bg-ink border border-rule rounded-md px-3 py-2 text-paper text-sm placeholder-paper-dim outline-none focus:border-signal/40"/>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="font-mono text-[10px] text-paper-mute tracking-wider uppercase block mb-1.5">Amount *</label>
+              <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="w-full bg-ink border border-rule rounded-md px-3 py-2 text-paper text-sm placeholder-paper-dim outline-none focus:border-signal/40"/>
+            </div>
+            <div>
+              <label className="font-mono text-[10px] text-paper-mute tracking-wider uppercase block mb-1.5">Due date</label>
+              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full bg-ink border border-rule rounded-md px-3 py-2 text-paper text-sm placeholder-paper-dim outline-none focus:border-signal/40"/>
+            </div>
+          </div>
         </div>
         <div className="px-5 py-3 border-t border-rule flex gap-2 justify-end">
           <button onClick={onClose} className="px-4 py-2 text-xs text-paper-mute hover:text-paper">Cancel</button>
