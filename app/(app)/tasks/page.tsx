@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import TopBar from '@/components/TopBar';
 import { useShell } from '@/components/AppShell';
+import { useConfirm } from '@/components/Confirm';
+import { useToast } from '@/components/Toast';
 
 type Task = {
   id: string;
@@ -24,6 +26,8 @@ export default function TasksPage() {
   const [filter, setFilter] = useState<'open' | 'today' | 'overdue' | 'done' | 'all'>('open');
   const [creating, setCreating] = useState(false);
   const { openSidebar } = useShell();
+  const { confirm } = useConfirm();
+  const { toast } = useToast();
 
   useEffect(() => {
     load();
@@ -53,9 +57,16 @@ export default function TasksPage() {
   }
 
   async function remove(id: string) {
-    if (!confirm('Delete this task?')) return;
+    const ok = await confirm({
+      title: 'Delete this task?',
+      message: 'This cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
     setTasks((prev) => prev.filter((t) => t.id !== id));
     await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+    toast('Task deleted');
   }
 
   const now = Date.now();
