@@ -22,11 +22,22 @@ export default function ActivityPage() {
   const { openSidebar } = useShell();
 
   useEffect(() => {
-    fetch('/api/activity').then((r) => r.json()).then((d) => {
-      setActivity(d.activity || []);
-      setLoading(false);
-    });
+    load();
+    const onFocus = () => load();
+    const onVis = () => { if (document.visibilityState === 'visible') load(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, []);
+
+  async function load() {
+    const data = await fetch('/api/activity').then((r) => r.json());
+    setActivity(data.activity || []);
+    setLoading(false);
+  }
 
   const filtered = filter === 'all' ? activity : activity.filter((a) => a.type.startsWith(filter));
 
