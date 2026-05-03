@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useShell } from '@/components/AppShell';
+import { useConfirm } from '@/components/Confirm';
+import { useToast } from '@/components/Toast';
 import TopBar from '@/components/TopBar';
 
 type LeadStatus = 'new' | 'quoted' | 'booked' | 'completed' | 'lost';
@@ -48,6 +50,8 @@ export default function LeadsPage() {
   const [scoring, setScoring] = useState(false);
   const [sortBy, setSortBy] = useState<'recent' | 'score' | 'value'>('recent');
   const { openSidebar } = useShell();
+  const { confirm } = useConfirm();
+  const { toast } = useToast();
 
   useEffect(() => {
     load();
@@ -85,14 +89,24 @@ export default function LeadsPage() {
 
   async function bulkAction(action: 'delete' | 'set-status', payload?: any) {
     if (selected.size === 0) return;
-    if (action === 'delete' && !confirm(`Delete ${selected.size} leads?`)) return;
+    if (action === 'delete') {
+      const ok = await confirm({
+        title: `Delete ${selected.size} ${selected.size === 1 ? 'lead' : 'leads'}?`,
+        message: 'This cannot be undone.',
+        confirmLabel: 'Delete',
+        destructive: true,
+      });
+      if (!ok) return;
+    }
 
+    const count = selected.size;
     await fetch('/api/leads/bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids: Array.from(selected), action, payload }),
     });
     setSelected(new Set());
+    toast(action === 'delete' ? `${count} ${count === 1 ? 'lead' : 'leads'} deleted` : `${count} ${count === 1 ? 'lead' : 'leads'} updated`);
     load();
   }
 
