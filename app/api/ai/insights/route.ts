@@ -22,10 +22,7 @@ export async function POST() {
 
     let insights: any;
 
-
     try {
-
-
       insights = await customerInsights({
       businessName: user.businessName,
       trade: user.trade,
@@ -33,17 +30,10 @@ export async function POST() {
       jobs,
       reviews,
     });
-
-
     } catch (aiErr: any) {
-
-
       const { message: friendly, status } = friendlyAIError(aiErr);
 
-
       return NextResponse.json({ error: friendly }, { status });
-
-
     }
 
     await logAI(userId, { type: 'pricing', summary: 'Customer insights generated' });
