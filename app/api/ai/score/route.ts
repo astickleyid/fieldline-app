@@ -17,12 +17,9 @@ export async function POST() {
 
     let scores: any;
 
-
     try {
-
-
       scores = await scoreLeads({
-      leads: openLeads.map((l) => ({
+        leads: openLeads.map((l) => ({
         id: l.id, name: l.name, status: l.status, type: l.type, value: l.value,
         source: l.source, notes: l.notes, quote: l.quote, address: l.address,
         createdAt: l.createdAt, updatedAt: l.updatedAt,
@@ -30,17 +27,10 @@ export async function POST() {
       trade: user.trade,
       businessName: user.businessName,
     });
-
-
     } catch (aiErr: any) {
-
-
       const { message: friendly, status } = friendlyAIError(aiErr);
 
-
       return NextResponse.json({ error: friendly }, { status });
-
-
     }
 
     // Save scores back to leads
