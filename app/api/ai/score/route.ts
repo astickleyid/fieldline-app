@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { listLeads, updateLead, getUserById, logAI } from '@/lib/db';
 import { scoreLeads } from '@/lib/ai';
 import { requireUser } from '@/lib/session';
+import { friendlyAIError } from '@/lib/ai-errors';
 
 export async function POST() {
   try {
@@ -14,7 +15,13 @@ export async function POST() {
     const openLeads = allLeads.filter((l) => l.status === 'new' || l.status === 'quoted');
     if (openLeads.length === 0) return NextResponse.json({ scored: 0, scores: [] });
 
-    const scores = await scoreLeads({
+    let scores: any;
+
+
+    try {
+
+
+      scores = await scoreLeads({
       leads: openLeads.map((l) => ({
         id: l.id, name: l.name, status: l.status, type: l.type, value: l.value,
         source: l.source, notes: l.notes, quote: l.quote, address: l.address,
@@ -23,6 +30,18 @@ export async function POST() {
       trade: user.trade,
       businessName: user.businessName,
     });
+
+
+    } catch (aiErr: any) {
+
+
+      const { message: friendly, status } = friendlyAIError(aiErr);
+
+
+      return NextResponse.json({ error: friendly }, { status });
+
+
+    }
 
     // Save scores back to leads
     for (const s of scores) {
