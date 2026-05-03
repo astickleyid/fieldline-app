@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { useShell } from '@/components/AppShell';
 import { useToast } from '@/components/Toast';
+import { useConfirm } from '@/components/Confirm';
 import TopBar from '@/components/TopBar';
 
 type LeadStatus = 'new' | 'quoted' | 'booked' | 'completed' | 'lost';
@@ -44,6 +45,7 @@ export default function LeadDetailPage() {
   const leadId = params.id as string;
   const { openSidebar } = useShell();
   const { toast } = useToast();
+  const { confirm } = useConfirm();
 
   const [lead, setLead] = useState<Lead | null>(null);
   const [activity, setActivity] = useState<Activity[]>([]);
@@ -74,8 +76,15 @@ export default function LeadDetailPage() {
   const [acceptUrl, setAcceptUrl] = useState('');
   const [generatingLink, setGeneratingLink] = useState(false);
 
+  // Templates
+  const [templates, setTemplates] = useState<{ id: string; name: string; subject: string; body: string; category: string }[]>([]);
+  const [businessName, setBusinessName] = useState('');
+  const [showTemplatePicker, setShowTemplatePicker] = useState<'sms' | 'email' | null>(null);
+
   useEffect(() => {
     load();
+    fetch('/api/templates').then((r) => r.json()).then((d) => setTemplates(d.templates || []));
+    fetch('/api/auth/me').then((r) => r.json()).then((d) => setBusinessName(d.user?.businessName || ''));
     const onFocus = () => quietReload();
     const onVis = () => { if (document.visibilityState === 'visible') quietReload(); };
     window.addEventListener('focus', onFocus);
@@ -85,6 +94,30 @@ export default function LeadDetailPage() {
       document.removeEventListener('visibilitychange', onVis);
     };
   }, [leadId]);
+
+  function applyMergeTags(text: string): string {
+    if (!lead) return text;
+    return text
+      .replace(/\{\{customer_name\}\}/g, lead.name || '')
+      .replace(/\{\{business_name\}\}/g, businessName)
+      .replace(/\{\{quote_amount\}\}/g, '$' + lead.value)
+      .replace(/\{\{address\}\}/g, lead.address || '')
+      .replace(/\{\{date\}\}/g, new Date().toLocaleDateString())
+      .replace(/\{\{phone\}\}/g, lead.phone || '');
+  }
+
+  function sendTemplate(tpl: { body: string; subject: string }, channel: 'sms' | 'email') {
+    if (!lead) return;
+    const body = applyMergeTags(tpl.body);
+    if (channel === 'sms' && lead.phone) {
+      window.location.href = `sms:${lead.phone}?&body=${encodeURIComponent(body)}`;
+    } else if (channel === 'email' && lead.email) {
+      const subject = applyMergeTags(tpl.subject || 'Hello');
+      window.location.href = `mailto:${lead.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    }
+    setShowTemplatePicker(null);
+    toast(`Template applied · ${channel.toUpperCase()} drafted`);
+  }
 
   async function load() {
     setLoading(true);
@@ -162,12 +195,20 @@ export default function LeadDetailPage() {
   }
 
   async function resetQuote() {
-    if (!lead || !confirm('Clear saved quote?')) return;
+    if (!lead) return;
+    const ok = await confirm({
+      title: 'Clear saved quote?',
+      message: 'You can regenerate it anytime.',
+      confirmLabel: 'Clear',
+      destructive: true,
+    });
+    if (!ok) return;
     await fetch(`/api/leads/${lead.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ quote: '', quoteGeneratedAt: 0 }),
     });
+    toast('Quote cleared');
     quietReload();
   }
 
@@ -257,8 +298,16 @@ export default function LeadDetailPage() {
   }
 
   async function remove() {
-    if (!lead || !confirm(`Delete lead "${lead.name}"? This cannot be undone.`)) return;
+    if (!lead) return;
+    const ok = await confirm({
+      title: `Delete "${lead.name}"?`,
+      message: 'This permanently deletes the lead and all its history.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
     await fetch(`/api/leads/${lead.id}`, { method: 'DELETE' });
+    toast('Lead deleted');
     router.push('/leads');
   }
 
@@ -441,6 +490,16 @@ export default function LeadDetailPage() {
                 {lead.phone && <a href={`sms:${lead.phone}`} className="px-3 py-1.5 border border-rule text-paper-mute hover:text-paper rounded-md text-xs">Text</a>}
                 {lead.phone && <a href={`tel:${lead.phone}`} className="px-3 py-1.5 border border-rule text-paper-mute hover:text-paper rounded-md text-xs">Call</a>}
                 {lead.email && <a href={`mailto:${lead.email}`} className="px-3 py-1.5 border border-rule text-paper-mute hover:text-paper rounded-md text-xs">Email</a>}
+                {templates.length > 0 && lead.phone && (
+                  <button onClick={() => setShowTemplatePicker('sms')} className="px-3 py-1.5 bg-acid/10 border border-acid/30 text-acid hover:bg-acid/20 rounded-md text-xs">
+                    ✎ SMS Template
+                  </button>
+                )}
+                {templates.length > 0 && lead.email && (
+                  <button onClick={() => setShowTemplatePicker('email')} className="px-3 py-1.5 bg-acid/10 border border-acid/30 text-acid hover:bg-acid/20 rounded-md text-xs">
+                    ✎ Email Template
+                  </button>
+                )}
                 <button onClick={remove} className="px-3 py-1.5 border border-red-400/30 text-red-400 hover:bg-red-400/10 rounded-md text-xs ml-auto">Delete</button>
               </div>
 
@@ -523,6 +582,54 @@ export default function LeadDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Template Picker Modal */}
+      {showTemplatePicker && (
+        <div className="fixed inset-0 bg-ink/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-ink-2 border border-rule rounded-xl w-full max-w-lg fade-up max-h-[80vh] flex flex-col">
+            <div className="px-5 py-3 border-b border-rule flex justify-between items-center">
+              <div>
+                <div className="font-mono text-[10px] text-paper-mute tracking-wider uppercase">Pick a template</div>
+                <div className="text-[11px] text-paper-dim mt-0.5">Send via {showTemplatePicker.toUpperCase()} to {showTemplatePicker === 'sms' ? lead.phone : lead.email}</div>
+              </div>
+              <button onClick={() => setShowTemplatePicker(null)} className="text-paper-mute hover:text-paper text-xl leading-none">×</button>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {templates.length === 0 ? (
+                <div className="p-8 text-center">
+                  <div className="text-paper-mute mb-3 text-sm">No templates yet</div>
+                  <Link href="/templates" className="text-signal hover:text-signal-bright text-xs">Create one →</Link>
+                </div>
+              ) : templates.map((t) => {
+                const previewBody = applyMergeTags(t.body);
+                const previewSubject = applyMergeTags(t.subject || '');
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => sendTemplate(t, showTemplatePicker)}
+                    className="w-full text-left px-5 py-3 border-b border-rule last:border-0 hover:bg-ink/40 group">
+                    <div className="flex justify-between items-start mb-1">
+                      <div className="text-sm font-medium text-paper">{t.name}</div>
+                      <span className="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded bg-rule text-paper-mute">{t.category}</span>
+                    </div>
+                    {showTemplatePicker === 'email' && previewSubject && (
+                      <div className="text-[11px] text-paper-mute mb-1">Subject: <span className="text-paper">{previewSubject}</span></div>
+                    )}
+                    <div className="text-[12px] text-paper-mute font-mono whitespace-pre-wrap line-clamp-3 group-hover:text-paper">
+                      {previewBody}
+                    </div>
+                    <div className="text-[10px] text-acid mt-2 font-mono">→ Tap to send</div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="px-5 py-2 border-t border-rule bg-ink/40 flex justify-between items-center">
+              <Link href="/templates" className="text-[11px] text-signal hover:text-signal-bright">Manage templates →</Link>
+              <button onClick={() => setShowTemplatePicker(null)} className="text-[11px] text-paper-mute hover:text-paper">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
