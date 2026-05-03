@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateQuote } from '@/lib/ai';
 import { getUserById, logAI, updateLead } from '@/lib/db';
 import { requireUser } from '@/lib/session';
+import { friendlyAIError } from '@/lib/ai-errors';
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,12 +13,22 @@ export async function POST(req: NextRequest) {
     const { jobDescription, leadId } = await req.json();
     if (!jobDescription) return NextResponse.json({ error: 'jobDescription required' }, { status: 400 });
 
-    const quote = await generateQuote({
-      jobDescription,
-      trade: user.trade,
-      businessName: user.businessName,
-      voice: user.voice,
-    });
+    let quote: string;
+    try {
+      quote = await generateQuote({
+        jobDescription,
+        trade: user.trade,
+        businessName: user.businessName,
+        voice: user.voice,
+      });
+    } catch (aiErr: any) {
+      const { message, status } = friendlyAIError(aiErr);
+      return NextResponse.json({ error: message }, { status });
+    }
+
+    if (!quote) {
+      return NextResponse.json({ error: 'AI returned an empty quote — try a different description.' }, { status: 502 });
+    }
 
     // Persist to lead if leadId provided
     if (leadId) {
