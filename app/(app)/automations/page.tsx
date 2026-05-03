@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import TopBar from '@/components/TopBar';
 import { useShell } from '@/components/AppShell';
+import { useConfirm } from '@/components/Confirm';
+import { useToast } from '@/components/Toast';
 
 type Rule = {
   id: string;
@@ -63,6 +65,8 @@ export default function AutomationsPage() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const { openSidebar } = useShell();
+  const { confirm } = useConfirm();
+  const { toast } = useToast();
 
   useEffect(() => {
     load();
@@ -92,13 +96,25 @@ export default function AutomationsPage() {
   }
 
   async function remove(id: string) {
-    if (!confirm('Delete this automation?')) return;
+    const ok = await confirm({
+      title: 'Delete this automation?',
+      message: 'It will stop firing for any future events.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
     await fetch(`/api/automations/${id}`, { method: 'DELETE' });
+    toast('Automation deleted');
     load();
   }
 
   async function seedPresets() {
-    if (!confirm('Add 3 starter automations? You can edit or disable them.')) return;
+    const ok = await confirm({
+      title: 'Add 3 starter automations?',
+      message: 'Stale lead follow-up, auto-invoice on job complete, notify on quote acceptance.',
+      confirmLabel: 'Add starters',
+    });
+    if (!ok) return;
     for (const p of PRESETS) {
       await fetch('/api/automations', {
         method: 'POST',
@@ -106,6 +122,7 @@ export default function AutomationsPage() {
         body: JSON.stringify(p),
       });
     }
+    toast('3 starter automations added');
     load();
   }
 
