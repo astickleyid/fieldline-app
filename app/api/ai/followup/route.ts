@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { writeFollowUp } from '@/lib/ai';
 import { getUserById, logAI } from '@/lib/db';
 import { requireUser } from '@/lib/session';
+import { friendlyAIError } from '@/lib/ai-errors';
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,13 +12,19 @@ export async function POST(req: NextRequest) {
 
     const { leadName, daysSinceQuote, jobDescription } = await req.json();
 
-    const message = await writeFollowUp({
-      leadName,
-      daysSinceQuote: Number(daysSinceQuote) || 3,
-      jobDescription: jobDescription || '',
-      businessName: user.businessName,
-      voice: user.voice,
-    });
+    let message: string;
+    try {
+      message = await writeFollowUp({
+        leadName,
+        daysSinceQuote: Number(daysSinceQuote) || 3,
+        jobDescription: jobDescription || '',
+        businessName: user.businessName,
+        voice: user.voice,
+      });
+    } catch (aiErr: any) {
+      const { message: friendly, status } = friendlyAIError(aiErr);
+      return NextResponse.json({ error: friendly }, { status });
+    }
 
     await logAI(userId, {
       type: 'follow-up',
