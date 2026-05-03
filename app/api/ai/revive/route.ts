@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getLead, getUserById, logAI } from '@/lib/db';
 import { reviveLead } from '@/lib/ai';
 import { requireUser } from '@/lib/session';
+import { friendlyAIError } from '@/lib/ai-errors';
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,7 +13,11 @@ export async function POST(req: NextRequest) {
     if (!lead || !user) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     const daysIdle = Math.max(1, Math.floor((Date.now() - lead.updatedAt) / 86_400_000));
-    const message = await reviveLead({
+    let message: any;
+
+    try {
+
+      message = await reviveLead({
       leadName: lead.name,
       daysIdle,
       status: lead.status,
@@ -20,6 +25,14 @@ export async function POST(req: NextRequest) {
       businessName: user.businessName,
       voice: user.voice,
     });
+
+    } catch (aiErr: any) {
+
+      const { message: friendly, status } = friendlyAIError(aiErr);
+
+      return NextResponse.json({ error: friendly }, { status });
+
+    }
 
     await logAI(userId, { type: 'follow-up', summary: `Re-engaged stale lead: ${lead.name}` });
     return NextResponse.json({ message });
