@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import TopBar from '@/components/TopBar';
 import { useShell } from '@/components/AppShell';
+import { useConfirm } from '@/components/Confirm';
+import { useToast } from '@/components/Toast';
 
 type Job = {
   id: string;
@@ -136,6 +138,8 @@ function JobModal({ job, onClose, onSaved }: { job: Job; onClose: () => void; on
   const [recurring, setRecurring] = useState<Job['recurring']>(job.recurring || null);
   const [saving, setSaving] = useState(false);
   const [generatingRecurring, setGeneratingRecurring] = useState(false);
+  const { confirm } = useConfirm();
+  const { toast } = useToast();
 
   async function save() {
     setSaving(true);
@@ -145,6 +149,7 @@ function JobModal({ job, onClose, onSaved }: { job: Job; onClose: () => void; on
       body: JSON.stringify({ status, notes, recurring }),
     });
     setSaving(false);
+    toast('Job updated');
     onSaved();
     onClose();
   }
@@ -152,21 +157,29 @@ function JobModal({ job, onClose, onSaved }: { job: Job; onClose: () => void; on
   async function genRecurring() {
     if (!recurring) return;
     setGeneratingRecurring(true);
-    // First save the recurring setting, then generate
     await fetch(`/api/jobs/${job.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ recurring }),
     });
-    await fetch(`/api/jobs/${job.id}/recurring`, { method: 'POST' });
+    const res = await fetch(`/api/jobs/${job.id}/recurring`, { method: 'POST' });
+    const data = await res.json();
     setGeneratingRecurring(false);
+    toast(`${data.jobs?.length || 4} recurring jobs scheduled`);
     onSaved();
     onClose();
   }
 
   async function remove() {
-    if (!confirm('Delete this job?')) return;
+    const ok = await confirm({
+      title: 'Delete this job?',
+      message: `${job.customerName} on ${new Date(job.scheduledFor).toLocaleDateString()}`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
     await fetch(`/api/jobs/${job.id}`, { method: 'DELETE' });
+    toast('Job deleted');
     onSaved();
     onClose();
   }
