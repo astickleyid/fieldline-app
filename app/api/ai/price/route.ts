@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { listJobs, getUserById, logAI } from '@/lib/db';
 import { suggestPrice } from '@/lib/ai';
 import { requireUser } from '@/lib/session';
+import { friendlyAIError } from '@/lib/ai-errors';
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,12 +20,30 @@ export async function POST(req: NextRequest) {
       .slice(0, 15)
       .map((j) => ({ description: j.notes || j.customerName, value: j.value }));
 
-    const suggestion = await suggestPrice({
+    let suggestion: any;
+
+
+    try {
+
+
+      suggestion = await suggestPrice({
       jobDescription,
       trade: user.trade,
       similarJobs: similar,
       businessName: user.businessName,
     });
+
+
+    } catch (aiErr: any) {
+
+
+      const { message: friendly, status } = friendlyAIError(aiErr);
+
+
+      return NextResponse.json({ error: friendly }, { status });
+
+
+    }
 
     await logAI(userId, { type: 'pricing', summary: `Pricing: ${jobDescription.slice(0, 50)} → $${suggestion.suggested}` });
 
