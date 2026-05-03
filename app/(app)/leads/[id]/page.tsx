@@ -76,6 +76,11 @@ export default function LeadDetailPage() {
   const [acceptUrl, setAcceptUrl] = useState('');
   const [generatingLink, setGeneratingLink] = useState(false);
 
+  // Manual quote entry (fallback when AI is unavailable)
+  const [writingManualQuote, setWritingManualQuote] = useState(false);
+  const [manualQuoteText, setManualQuoteText] = useState('');
+  const [savingManualQuote, setSavingManualQuote] = useState(false);
+
   // Templates
   const [templates, setTemplates] = useState<{ id: string; name: string; subject: string; body: string; category: string }[]>([]);
   const [businessName, setBusinessName] = useState('');
@@ -192,6 +197,26 @@ export default function LeadDetailPage() {
       setEditForm(found);
     }
     setActivity(actRes.activity || []);
+  }
+
+  async function saveManualQuote() {
+    if (!lead || !manualQuoteText.trim()) return;
+    setSavingManualQuote(true);
+    await fetch(`/api/leads/${lead.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        quote: manualQuoteText,
+        quoteGeneratedAt: Date.now(),
+        status: 'quoted',
+      }),
+    });
+    setSavingManualQuote(false);
+    setLead({ ...lead, quote: manualQuoteText, quoteGeneratedAt: Date.now(), status: 'quoted' });
+    setWritingManualQuote(false);
+    setManualQuoteText('');
+    toast('Quote saved · status moved to Quoted');
+    quietReload();
   }
 
   async function resetQuote() {
@@ -424,30 +449,56 @@ export default function LeadDetailPage() {
 
             {/* AI Quote */}
             <div className="bg-ink-2 border border-rule rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                 <div>
-                  <div className="font-mono text-[10px] text-signal tracking-wider uppercase mb-0.5">⚡ AI Quote</div>
+                  <div className="font-mono text-[10px] text-signal tracking-wider uppercase mb-0.5">⚡ Quote</div>
                   {lead.quoteGeneratedAt && <div className="font-mono text-[10px] text-paper-dim">saved · {new Date(lead.quoteGeneratedAt).toLocaleString()}</div>}
                 </div>
-                <div className="flex items-center gap-3">
-                  {lead.quote && (
+                <div className="flex items-center gap-3 flex-wrap">
+                  {lead.quote && !writingManualQuote && (
                     <>
-                      <button onClick={() => navigator.clipboard.writeText(lead.quote!)} className="text-[11px] text-paper-mute hover:text-paper">Copy</button>
+                      <button onClick={() => navigator.clipboard.writeText(lead.quote!).then(() => toast('Quote copied'))} className="text-[11px] text-paper-mute hover:text-paper">Copy</button>
+                      <button onClick={() => { setManualQuoteText(lead.quote || ''); setWritingManualQuote(true); }} className="text-[11px] text-paper-mute hover:text-paper">Edit</button>
                       <button onClick={resetQuote} className="text-[11px] text-paper-mute hover:text-red-400">Reset</button>
                     </>
                   )}
-                  <button onClick={generateQuote} disabled={genQuoteLoading} className="text-[11px] text-signal hover:text-signal-bright font-medium disabled:opacity-40">
-                    {genQuoteLoading ? 'Generating...' : lead.quote ? 'Regenerate →' : 'Generate quote →'}
-                  </button>
+                  {!writingManualQuote && (
+                    <>
+                      <button onClick={() => { setManualQuoteText(lead.quote || ''); setWritingManualQuote(true); }} className="text-[11px] text-paper-mute hover:text-paper font-medium">
+                        ✎ Write manually
+                      </button>
+                      <button onClick={generateQuote} disabled={genQuoteLoading} className="text-[11px] text-signal hover:text-signal-bright font-medium disabled:opacity-40">
+                        {genQuoteLoading ? 'Generating...' : lead.quote ? '⚡ Regenerate' : '⚡ AI Generate →'}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
-              {lead.quote ? (
+
+              {writingManualQuote ? (
+                <div className="space-y-3 fade-up">
+                  <textarea
+                    value={manualQuoteText}
+                    onChange={(e) => setManualQuoteText(e.target.value)}
+                    rows={8}
+                    autoFocus
+                    placeholder="Write your quote here. Include scope of work, pricing breakdown, and any terms..."
+                    className="w-full bg-ink border border-rule rounded-md px-3 py-2 text-paper text-sm font-mono placeholder-paper-dim outline-none focus:border-signal/40 resize-none leading-relaxed"
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => { setWritingManualQuote(false); setManualQuoteText(''); }} className="px-3 py-1.5 text-xs text-paper-mute hover:text-paper">Cancel</button>
+                    <button onClick={saveManualQuote} disabled={savingManualQuote || !manualQuoteText.trim()} className="px-3 py-1.5 bg-signal hover:bg-signal-bright text-white rounded-md text-xs font-medium disabled:opacity-50">
+                      {savingManualQuote ? 'Saving...' : 'Save Quote'}
+                    </button>
+                  </div>
+                </div>
+              ) : lead.quote ? (
                 <div className="bg-ink border border-rule rounded-md p-3 font-mono text-xs text-paper leading-relaxed whitespace-pre-wrap">
                   {lead.quote}
                 </div>
               ) : (
                 <div className="bg-ink border border-dashed border-rule rounded-md p-4 text-center">
-                  <div className="text-[11px] text-paper-dim italic">No quote yet — click Generate to create one in your voice.</div>
+                  <div className="text-[11px] text-paper-dim italic">No quote yet — click ⚡ AI Generate or ✎ Write manually.</div>
                 </div>
               )}
             </div>
