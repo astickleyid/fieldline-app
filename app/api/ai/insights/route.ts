@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { listCustomers, listJobs, listReviews, getUserById, logAI } from '@/lib/db';
 import { customerInsights } from '@/lib/ai';
 import { requireUser } from '@/lib/session';
+import { friendlyAIError } from '@/lib/ai-errors';
 
 export async function POST() {
   try {
@@ -19,13 +20,31 @@ export async function POST() {
       return NextResponse.json({ insights: 'Not enough data yet. Complete some jobs and add customers to see insights.' });
     }
 
-    const insights = await customerInsights({
+    let insights: any;
+
+
+    try {
+
+
+      insights = await customerInsights({
       businessName: user.businessName,
       trade: user.trade,
       customers,
       jobs,
       reviews,
     });
+
+
+    } catch (aiErr: any) {
+
+
+      const { message: friendly, status } = friendlyAIError(aiErr);
+
+
+      return NextResponse.json({ error: friendly }, { status });
+
+
+    }
 
     await logAI(userId, { type: 'pricing', summary: 'Customer insights generated' });
     return NextResponse.json({ insights });
