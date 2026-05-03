@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import TopBar from '@/components/TopBar';
 import { useShell } from '@/components/AppShell';
+import { useToast } from '@/components/Toast';
 
 type Stats = { revenueMTD: number; jobsBooked: number; pipelineValue: number; rating: number; reviewCount: number; customerCount: number; leadConversionRate: number };
 type AILogEntry = { id: string; type: string; summary: string; timestamp: number };
@@ -21,6 +22,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
   const { openSidebar } = useShell();
+  const { toast } = useToast();
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -62,8 +64,13 @@ export default function DashboardPage() {
     setBriefingLoading(true);
     const res = await fetch('/api/ai/briefing', { method: 'POST' });
     const data = await res.json();
-    setBriefing(data.briefing);
     setBriefingLoading(false);
+    if (res.ok && data.briefing) {
+      setBriefing(data.briefing);
+      toast('Daily briefing ready');
+    } else {
+      toast(data.error || 'Could not generate briefing', 'error');
+    }
   }
 
   const fmt = (n: number) => '$' + n.toLocaleString();
