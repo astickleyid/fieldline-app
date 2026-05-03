@@ -4,6 +4,7 @@ import { Briefing } from '@/lib/types';
 import { listLeads, listJobs, listInvoices, listReviews, computeStats, getUserById, logAI } from '@/lib/db';
 import { dailyBriefing } from '@/lib/ai';
 import { requireUser } from '@/lib/session';
+import { friendlyAIError } from '@/lib/ai-errors';
 
 const CACHE_KEY = (userId: string, date: string) => `briefing:${userId}:${date}`;
 
@@ -47,16 +48,22 @@ export async function POST() {
     const overdueInvoices = invoices.filter((i) => i.status === 'overdue' || (i.status === 'sent' && i.dueDate && i.dueDate < Date.now()));
     const newReviews = reviews.filter((r) => Date.now() - r.createdAt < dayMs);
 
-    const text = await dailyBriefing({
-      businessName: user.businessName,
-      trade: user.trade,
-      stats,
-      newLeads,
-      staleLeads,
-      todayJobs,
-      overdueInvoices,
-      newReviews,
-    });
+    let text: string;
+    try {
+      text = await dailyBriefing({
+        businessName: user.businessName,
+        trade: user.trade,
+        stats,
+        newLeads,
+        staleLeads,
+        todayJobs,
+        overdueInvoices,
+        newReviews,
+      });
+    } catch (aiErr: any) {
+      const { message: friendly, status } = friendlyAIError(aiErr);
+      return NextResponse.json({ error: friendly }, { status });
+    }
 
     const briefing: Briefing = { text, generatedAt: Date.now(), date: todayKey() };
     // Cache for ~12 hours
