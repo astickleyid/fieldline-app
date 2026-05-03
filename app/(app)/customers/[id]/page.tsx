@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import TopBar from '@/components/TopBar';
 import { useShell } from '@/components/AppShell';
+import { useConfirm } from '@/components/Confirm';
+import { useToast } from '@/components/Toast';
 
 type Customer = {
   id: string;
@@ -48,6 +50,8 @@ export default function CustomerDetailPage() {
   const router = useRouter();
   const customerId = params.id as string;
   const { openSidebar } = useShell();
+  const { confirm } = useConfirm();
+  const { toast } = useToast();
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -100,8 +104,15 @@ export default function CustomerDetailPage() {
 
   async function remove() {
     if (!customer) return;
-    if (!confirm(`Delete ${customer.name}? This won't delete their leads or jobs.`)) return;
+    const ok = await confirm({
+      title: `Delete ${customer.name}?`,
+      message: "This won't delete their leads or jobs — only the customer record.",
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
     await fetch(`/api/customers/${customerId}`, { method: 'DELETE' });
+    toast('Customer deleted');
     router.push('/customers');
   }
 
