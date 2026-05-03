@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import TopBar from '@/components/TopBar';
 import { useShell } from '@/components/AppShell';
+import { useToast } from '@/components/Toast';
 
 type Review = {
   id: string;
@@ -22,6 +23,7 @@ export default function ReviewsPage() {
   const [replying, setReplying] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'unreplied' | 'replied'>('all');
   const { openSidebar } = useShell();
+  const { toast } = useToast();
 
   useEffect(() => {
     load();
@@ -45,8 +47,13 @@ export default function ReviewsPage() {
     setReplying(reviewId);
     const res = await fetch(`/api/reviews/${reviewId}/reply`, { method: 'POST' });
     const data = await res.json();
-    if (data.review) setReviews((prev) => prev.map((r) => (r.id === reviewId ? data.review : r)));
     setReplying(null);
+    if (data.review) {
+      setReviews((prev) => prev.map((r) => (r.id === reviewId ? data.review : r)));
+      toast('AI reply drafted');
+    } else {
+      toast(data.error || 'Could not generate reply', 'error');
+    }
   }
 
   const filtered = reviews.filter((r) => {
