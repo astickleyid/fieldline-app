@@ -26,12 +26,23 @@ export default function AnalyticsPage() {
   const { openSidebar } = useShell();
 
   useEffect(() => {
-    setLoading(true);
-    fetch(`/api/analytics?range=${range}`).then((r) => r.json()).then((d) => {
-      setData(d);
-      setLoading(false);
-    });
+    load();
+    const onFocus = () => load();
+    const onVis = () => { if (document.visibilityState === 'visible') load(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [range]);
+
+  async function load() {
+    setLoading(true);
+    const d = await fetch(`/api/analytics?range=${range}`).then((r) => r.json());
+    setData(d);
+    setLoading(false);
+  }
 
   return (
     <div>
