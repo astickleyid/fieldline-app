@@ -82,9 +82,15 @@ export default function LeadsPage() {
 
   async function scoreAll() {
     setScoring(true);
-    await fetch('/api/ai/score', { method: 'POST' });
+    const res = await fetch('/api/ai/score', { method: 'POST' });
+    const data = await res.json();
     setScoring(false);
-    load();
+    if (res.ok) {
+      toast(`AI scored ${data.scored || 0} leads`);
+      load();
+    } else {
+      toast(data.error || 'AI scoring failed', 'error');
+    }
   }
 
   async function bulkAction(action: 'delete' | 'set-status', payload?: any) {
