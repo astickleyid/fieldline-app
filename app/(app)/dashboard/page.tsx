@@ -261,10 +261,11 @@ function QuickQuote() {
   const [value, setValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [createdLeadId, setCreatedLeadId] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   async function quickAdd() {
     if (!name.trim() || !desc.trim()) return;
-    setLoading(true); setCreatedLeadId(null);
+    setLoading(true); setCreatedLeadId(null); setAiError(null);
     try {
       // Step 1: Create lead
       const leadRes = await fetch('/api/leads', {
@@ -281,16 +282,26 @@ function QuickQuote() {
       const leadId = leadData.lead?.id;
       if (!leadId) throw new Error('Lead creation failed');
 
-      // Step 2: Generate quote (which auto-moves to "quoted")
-      await fetch('/api/ai/quote', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobDescription: desc, leadId }),
-      });
+      // Step 2: Try to generate AI quote (which auto-moves to "quoted")
+      // If AI fails, we still keep the lead — user can write quote manually
+      try {
+        const quoteRes = await fetch('/api/ai/quote', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jobDescription: desc, leadId }),
+        });
+        if (!quoteRes.ok) {
+          const err = await quoteRes.json().catch(() => ({}));
+          setAiError(err.error || 'AI quote failed — lead saved, write quote manually.');
+        }
+      } catch {
+        setAiError('AI quote failed — lead saved, write quote manually.');
+      }
 
       setCreatedLeadId(leadId);
       setName(''); setDesc(''); setValue('');
     } catch (e: any) {
       console.error(e);
+      setAiError(e.message || 'Could not create lead — please try again.');
     } finally {
       setLoading(false);
     }
@@ -303,14 +314,22 @@ function QuickQuote() {
         <span className="text-[10px] text-paper-dim font-mono">— creates a real lead with an AI-generated quote in one click</span>
       </div>
       {createdLeadId ? (
-        <div className="bg-acid/10 border border-acid/30 rounded-md p-3 fade-up flex items-center justify-between gap-3">
-          <div>
-            <div className="text-sm text-acid font-mono">✓ Lead created and quoted</div>
-            <div className="text-xs text-paper-mute mt-0.5">Click below to view, edit, or send to customer</div>
+        <div className="space-y-2 fade-up">
+          <div className={`border rounded-md p-3 flex items-center justify-between gap-3 ${
+            aiError ? 'bg-amber-400/10 border-amber-400/30' : 'bg-acid/10 border-acid/30'
+          }`}>
+            <div>
+              <div className={`text-sm font-mono ${aiError ? 'text-amber-400' : 'text-acid'}`}>
+                {aiError ? '⚠ Lead saved (without AI quote)' : '✓ Lead created and quoted'}
+              </div>
+              <div className="text-xs text-paper-mute mt-0.5">
+                {aiError || 'Click below to view, edit, or send to customer'}
+              </div>
+            </div>
+            <Link href={`/leads/${createdLeadId}`} className="px-3 py-1.5 bg-signal hover:bg-signal-bright text-white rounded-md text-xs font-medium whitespace-nowrap">
+              View Lead →
+            </Link>
           </div>
-          <Link href={`/leads/${createdLeadId}`} className="px-3 py-1.5 bg-signal hover:bg-signal-bright text-white rounded-md text-xs font-medium whitespace-nowrap">
-            View Lead →
-          </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr_auto_auto] gap-2">
