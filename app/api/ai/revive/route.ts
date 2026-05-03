@@ -16,7 +16,6 @@ export async function POST(req: NextRequest) {
     let message: any;
 
     try {
-
       message = await reviveLead({
       leadName: lead.name,
       daysIdle,
@@ -25,13 +24,10 @@ export async function POST(req: NextRequest) {
       businessName: user.businessName,
       voice: user.voice,
     });
-
     } catch (aiErr: any) {
-
       const { message: friendly, status } = friendlyAIError(aiErr);
 
       return NextResponse.json({ error: friendly }, { status });
-
     }
 
     await logAI(userId, { type: 'follow-up', summary: `Re-engaged stale lead: ${lead.name}` });
