@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import TopBar from '@/components/TopBar';
 import { useShell } from '@/components/AppShell';
+import { useConfirm } from '@/components/Confirm';
+import { useToast } from '@/components/Toast';
 
 type Template = {
   id: string;
@@ -56,6 +58,8 @@ export default function TemplatesPage() {
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState<string>('all');
   const { openSidebar } = useShell();
+  const { confirm } = useConfirm();
+  const { toast } = useToast();
 
   useEffect(() => {
     load();
@@ -76,7 +80,12 @@ export default function TemplatesPage() {
   }
 
   async function seedPresets() {
-    if (!confirm('Add 4 starter templates? You can edit or delete them after.')) return;
+    const ok = await confirm({
+      title: 'Add 4 starter templates?',
+      message: 'Quote sent, 3-day follow-up, Invoice sent, Thank-you/review request. You can edit or delete after.',
+      confirmLabel: 'Add starters',
+    });
+    if (!ok) return;
     for (const p of PRESETS) {
       await fetch('/api/templates', {
         method: 'POST',
@@ -84,12 +93,20 @@ export default function TemplatesPage() {
         body: JSON.stringify(p),
       });
     }
+    toast('4 starter templates added');
     load();
   }
 
   async function remove(id: string) {
-    if (!confirm('Delete this template?')) return;
+    const ok = await confirm({
+      title: 'Delete this template?',
+      message: 'This cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
     await fetch(`/api/templates/${id}`, { method: 'DELETE' });
+    toast('Template deleted');
     load();
   }
 
