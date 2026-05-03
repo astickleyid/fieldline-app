@@ -22,27 +22,17 @@ export async function POST(req: NextRequest) {
 
     let suggestion: any;
 
-
     try {
-
-
       suggestion = await suggestPrice({
       jobDescription,
       trade: user.trade,
       similarJobs: similar,
       businessName: user.businessName,
     });
-
-
     } catch (aiErr: any) {
-
-
       const { message: friendly, status } = friendlyAIError(aiErr);
 
-
       return NextResponse.json({ error: friendly }, { status });
-
-
     }
 
     await logAI(userId, { type: 'pricing', summary: `Pricing: ${jobDescription.slice(0, 50)} → $${suggestion.suggested}` });
