@@ -1,7 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const MODEL = 'claude-sonnet-4-20250514';
+// Customer-facing writing (quality matters): quotes, review replies, follow-ups, briefings.
+const MODEL = 'claude-sonnet-4-6';
+// Structured/internal tasks (cheap + fast): lead scoring, price suggestion. ~5x cheaper.
+const MODEL_FAST = 'claude-haiku-4-5-20251001';
 
 export async function generateQuote(input: {
   jobDescription: string;
@@ -91,7 +94,7 @@ export async function scoreLeads(input: {
   }).join('\n');
 
   const msg = await client.messages.create({
-    model: MODEL,
+    model: MODEL_FAST,
     max_tokens: 2000,
     system: `You score leads for ${input.businessName}, a ${input.trade} business. For each lead, give a close-probability score from 0-100 and a one-sentence reasoning. Consider: time-since-contact (cold = lower), quote sent = higher, source quality (referrals > yard signs > random), value vs typical (huge values often less likely), idle time, and stage in pipeline. Return JSON only.`,
     messages: [
@@ -162,7 +165,7 @@ export async function suggestPrice(input: {
     : 'No similar past jobs in history.';
 
   const msg = await client.messages.create({
-    model: MODEL,
+    model: MODEL_FAST,
     max_tokens: 400,
     system: `You suggest prices for a ${input.trade} business in Northwest Ohio. Respond ONLY with valid JSON: {"suggested":250,"low":200,"high":300,"reasoning":"..."}`,
     messages: [
