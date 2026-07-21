@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     }
 
     const user = await createUser({ email, businessName, trade, phone });
-    await seedDemo(user.id);
+    await seedDemo(user.id, user.trade);
 
     const session = await getSession();
     session.userId = user.id;

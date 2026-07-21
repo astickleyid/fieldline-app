@@ -1,5 +1,5 @@
 import { redis } from './redis';
-import { Lead, Job, Review, AILogEntry, User, Stats, Customer, Invoice, Activity, ActivityType } from './types';
+import { Lead, Job, Review, AILogEntry, User, Stats, Customer, Invoice, Activity, ActivityType, JobType } from './types';
 
 // ─── ID GEN ──────────────────────────────────
 export const newId = (prefix: string) =>
@@ -823,85 +823,190 @@ export async function deleteSavedView(id: string, userId: string): Promise<void>
 }
 
 // ─── DEMO SEED ───────────────────────────────
-export async function seedDemo(userId: string): Promise<void> {
-  const leadData = [
-    { name: 'Johnson Residence', status: 'new' as const, type: 'lawn' as const, value: 280, address: '1421 Oak St, Toledo, OH', notes: 'Bi-weekly mowing requested.', source: 'Google Search' },
-    { name: 'Baker — Furnace svc', status: 'new' as const, type: 'hvac' as const, value: 950, address: '88 Maple Ave, Maumee, OH', notes: 'Furnace not igniting on cold mornings.', source: 'Referral' },
-    { name: 'Holt Property', status: 'new' as const, type: 'lawn' as const, value: 420, address: '506 Elm, Sylvania, OH', notes: 'Spring cleanup + weekly mow.', source: 'Yard Sign' },
-    { name: 'Williams Estate', status: 'quoted' as const, type: 'plumb' as const, value: 1200, address: '92 Birch, Perrysburg, OH', notes: 'Master bath remodel piping.', source: 'Website' },
-    { name: 'Monroe Duplex', status: 'quoted' as const, type: 'lawn' as const, value: 160, address: '12 N River, Monroe, MI', notes: 'Both units, weekly.', source: 'Facebook' },
-    { name: 'Perrysburg HVAC', status: 'booked' as const, type: 'hvac' as const, value: 2400, address: '1700 Louisiana Ave, Perrysburg, OH', source: 'Repeat Customer' },
-    { name: 'Smith — weekly', status: 'booked' as const, type: 'lawn' as const, value: 340, address: '55 Hill Dr, Toledo, OH', source: 'Repeat Customer' },
-    { name: 'Davis Acreage', status: 'completed' as const, type: 'lawn' as const, value: 580, address: '901 Country Rd, Sylvania, OH', source: 'Referral' },
-  ];
+export async function seedDemo(userId: string, trade: JobType = 'other'): Promise<void> {
+  const t: JobType = (['lawn', 'hvac', 'plumb', 'other'] as const).includes(trade as any) ? trade : 'other';
 
-  for (const l of leadData) {
+  const SEEDS: Record<JobType, {
+    leads: Array<{ name: string; status: 'new' | 'quoted' | 'booked' | 'completed'; value: number; address: string; notes?: string; source: string }>;
+    customers: Array<{ name: string; phone: string; email: string; address: string; tags: string[] }>;
+    jobs: Array<{ customerName: string; durationMinutes: number; address: string; value: number; notes: string; recurring?: 'weekly' }>;
+    reviews: Array<{ customer: string; rating: number; text: string; reply?: string; repliedAt?: number }>;
+    aiLog: Array<{ type: 'quote' | 'review-reply' | 'follow-up'; summary: string }>;
+  }> = {
+    hvac: {
+      leads: [
+        { name: 'Baker — Furnace svc', status: 'new', value: 950, address: '88 Maple Ave, Maumee, OH', notes: 'Furnace not igniting on cold mornings.', source: 'Referral' },
+        { name: 'Kowalski — AC out', status: 'new', value: 480, address: '1421 Oak St, Toledo, OH', notes: 'No cooling, unit runs but blows warm.', source: 'Google Search' },
+        { name: 'Reyes — new install quote', status: 'new', value: 6800, address: '506 Elm, Sylvania, OH', notes: 'Replacing 18yr old system, wants high-efficiency.', source: 'Website' },
+        { name: 'Williams Estate', status: 'quoted', value: 3200, address: '92 Birch, Perrysburg, OH', notes: 'Ductwork rebalance + zoning.', source: 'Website' },
+        { name: 'Monroe Duplex', status: 'quoted', value: 1150, address: '12 N River, Monroe, MI', notes: 'Two furnaces, annual service contract.', source: 'Facebook' },
+        { name: 'Perrysburg Commercial', status: 'booked', value: 2400, address: '1700 Louisiana Ave, Perrysburg, OH', source: 'Repeat Customer' },
+        { name: 'Nowak — maintenance plan', status: 'booked', value: 340, address: '55 Hill Dr, Toledo, OH', source: 'Repeat Customer' },
+        { name: 'Delgado — heat pump', status: 'completed', value: 5800, address: '901 Country Rd, Sylvania, OH', source: 'Referral' },
+      ],
+      customers: [
+        { name: 'Nowak Family', phone: '(419) 555-2103', email: 'nowak@email.com', address: '55 Hill Dr, Toledo, OH', tags: ['maintenance plan', 'repeat'] },
+        { name: 'Perrysburg Commercial LLC', phone: '(419) 555-7811', email: 'manager@perrysbgcommercial.com', address: '1700 Louisiana Ave, Perrysburg, OH', tags: ['commercial'] },
+      ],
+      jobs: [
+        { customerName: 'Nowak Family', durationMinutes: 90, address: '55 Hill Dr, Toledo, OH', value: 165, notes: 'Seasonal tune-up + filter change' },
+        { customerName: 'Perrysburg Commercial', durationMinutes: 180, address: '1700 Louisiana Ave, Perrysburg, OH', value: 2400, notes: 'Annual maintenance, 4 rooftop units' },
+      ],
+      reviews: [
+        { customer: 'Marcus T.', rating: 5, text: 'Had heat back on the same evening. Fast and professional.', reply: 'Thanks Marcus! Glad we could get you warm again quickly.', repliedAt: Date.now() - 1000 * 60 * 14 },
+        { customer: 'Denise K.', rating: 5, text: 'Best HVAC company I have used in 10 years. They show up when they say they will.', reply: 'Means a lot, Denise. See you at the next service.', repliedAt: Date.now() - 1000 * 60 * 60 * 8 },
+        { customer: 'Ray J.', rating: 5, text: 'Quick, honest, fair pricing on our AC repair.' },
+        { customer: 'Kim P.', rating: 4, text: 'Good work but ran a bit late. Otherwise no complaints.' },
+      ],
+      aiLog: [
+        { type: 'quote', summary: 'Quote drafted & sent to Kowalski — $480 AC diagnostic + repair' },
+        { type: 'review-reply', summary: 'Replied to ★★★★★ from Marcus T.' },
+        { type: 'follow-up', summary: 'Day-3 follow-up sent to Williams Estate' },
+      ],
+    },
+    plumb: {
+      leads: [
+        { name: 'Baker — water heater', status: 'new', value: 1450, address: '88 Maple Ave, Maumee, OH', notes: 'Leaking at base, 11yr old tank.', source: 'Referral' },
+        { name: 'Kowalski — main drain', status: 'new', value: 380, address: '1421 Oak St, Toledo, OH', notes: 'Backing up into basement floor drain.', source: 'Google Search' },
+        { name: 'Reyes — repipe quote', status: 'new', value: 7200, address: '506 Elm, Sylvania, OH', notes: 'Galvanized to PEX, 3 bed ranch.', source: 'Website' },
+        { name: 'Williams Estate', status: 'quoted', value: 1200, address: '92 Birch, Perrysburg, OH', notes: 'Master bath remodel piping.', source: 'Website' },
+        { name: 'Monroe Duplex', status: 'quoted', value: 640, address: '12 N River, Monroe, MI', notes: 'Both units, fixture replacement.', source: 'Facebook' },
+        { name: 'Perrysburg Commercial', status: 'booked', value: 2400, address: '1700 Louisiana Ave, Perrysburg, OH', source: 'Repeat Customer' },
+        { name: 'Nowak — sump pump', status: 'booked', value: 720, address: '55 Hill Dr, Toledo, OH', source: 'Repeat Customer' },
+        { name: 'Delgado — sewer line', status: 'completed', value: 4900, address: '901 Country Rd, Sylvania, OH', source: 'Referral' },
+      ],
+      customers: [
+        { name: 'Nowak Family', phone: '(419) 555-2103', email: 'nowak@email.com', address: '55 Hill Dr, Toledo, OH', tags: ['repeat'] },
+        { name: 'Perrysburg Commercial LLC', phone: '(419) 555-7811', email: 'manager@perrysbgcommercial.com', address: '1700 Louisiana Ave, Perrysburg, OH', tags: ['commercial'] },
+      ],
+      jobs: [
+        { customerName: 'Nowak Family', durationMinutes: 120, address: '55 Hill Dr, Toledo, OH', value: 720, notes: 'Sump pump replacement + check valve' },
+        { customerName: 'Perrysburg Commercial', durationMinutes: 180, address: '1700 Louisiana Ave, Perrysburg, OH', value: 2400, notes: 'Backflow testing + fixture service' },
+      ],
+      reviews: [
+        { customer: 'Marcus T.', rating: 5, text: 'Stopped the leak same day. Fast and professional.', reply: 'Thanks Marcus! Glad we caught it before any real damage.', repliedAt: Date.now() - 1000 * 60 * 14 },
+        { customer: 'Denise K.', rating: 5, text: 'Best plumber I have used in 10 years. They show up when they say they will.', reply: 'Means a lot, Denise. Call us anytime.', repliedAt: Date.now() - 1000 * 60 * 60 * 8 },
+        { customer: 'Ray J.', rating: 5, text: 'Quick, honest, fair pricing on our drain clog.' },
+        { customer: 'Kim P.', rating: 4, text: 'Good work but ran a bit late. Otherwise no complaints.' },
+      ],
+      aiLog: [
+        { type: 'quote', summary: 'Quote drafted & sent to Baker — $1,450 water heater replacement' },
+        { type: 'review-reply', summary: 'Replied to ★★★★★ from Marcus T.' },
+        { type: 'follow-up', summary: 'Day-3 follow-up sent to Williams Estate' },
+      ],
+    },
+    lawn: {
+      leads: [
+        { name: 'Johnson Residence', status: 'new', value: 280, address: '1421 Oak St, Toledo, OH', notes: 'Bi-weekly mowing requested.', source: 'Google Search' },
+        { name: 'Holt Property', status: 'new', value: 420, address: '506 Elm, Sylvania, OH', notes: 'Spring cleanup + weekly mow.', source: 'Yard Sign' },
+        { name: 'Baker — landscape beds', status: 'new', value: 1150, address: '88 Maple Ave, Maumee, OH', notes: 'Mulch + shrub trim, front and side.', source: 'Referral' },
+        { name: 'Williams Estate', status: 'quoted', value: 1200, address: '92 Birch, Perrysburg, OH', notes: 'Full season contract, 1.2 acres.', source: 'Website' },
+        { name: 'Monroe Duplex', status: 'quoted', value: 160, address: '12 N River, Monroe, MI', notes: 'Both units, weekly.', source: 'Facebook' },
+        { name: 'Perrysburg Commercial', status: 'booked', value: 2400, address: '1700 Louisiana Ave, Perrysburg, OH', source: 'Repeat Customer' },
+        { name: 'Smith — weekly', status: 'booked', value: 340, address: '55 Hill Dr, Toledo, OH', source: 'Repeat Customer' },
+        { name: 'Davis Acreage', status: 'completed', value: 580, address: '901 Country Rd, Sylvania, OH', source: 'Referral' },
+      ],
+      customers: [
+        { name: 'Smith Family', phone: '(419) 555-2103', email: 'smith@email.com', address: '55 Hill Dr, Toledo, OH', tags: ['repeat', 'weekly'] },
+        { name: 'Perrysburg Commercial LLC', phone: '(419) 555-7811', email: 'manager@perrysbgcommercial.com', address: '1700 Louisiana Ave, Perrysburg, OH', tags: ['commercial'] },
+      ],
+      jobs: [
+        { customerName: 'Smith Family', durationMinutes: 60, address: '55 Hill Dr, Toledo, OH', value: 65, notes: 'Weekly mow + edge', recurring: 'weekly' },
+        { customerName: 'Perrysburg Commercial', durationMinutes: 180, address: '1700 Louisiana Ave, Perrysburg, OH', value: 2400, notes: 'Grounds maintenance, full property' },
+      ],
+      reviews: [
+        { customer: 'Marcus T.', rating: 5, text: 'Fast and professional. Yard looks sharp every week.', reply: 'Thanks Marcus! Glad we could fit your schedule.', repliedAt: Date.now() - 1000 * 60 * 14 },
+        { customer: 'Denise K.', rating: 5, text: 'Best lawn care I have used in 10 years. They show up when they say they will.', reply: 'Means a lot, Denise. See you next visit.', repliedAt: Date.now() - 1000 * 60 * 60 * 8 },
+        { customer: 'Ray J.', rating: 5, text: 'Quick, honest, fair pricing on our spring cleanup.' },
+        { customer: 'Kim P.', rating: 4, text: 'Good work but ran a bit late. Otherwise no complaints.' },
+      ],
+      aiLog: [
+        { type: 'quote', summary: 'Quote drafted & sent to Johnson Residence — $280/mo recurring' },
+        { type: 'review-reply', summary: 'Replied to ★★★★★ from Marcus T.' },
+        { type: 'follow-up', summary: 'Day-3 follow-up sent to Williams Estate' },
+      ],
+    },
+    other: {
+      leads: [
+        { name: 'Baker Residence', status: 'new', value: 950, address: '88 Maple Ave, Maumee, OH', notes: 'Initial service request, wants a callback.', source: 'Referral' },
+        { name: 'Kowalski Residence', status: 'new', value: 480, address: '1421 Oak St, Toledo, OH', notes: 'Repair estimate requested.', source: 'Google Search' },
+        { name: 'Reyes Property', status: 'new', value: 2200, address: '506 Elm, Sylvania, OH', notes: 'Larger project, wants written quote.', source: 'Website' },
+        { name: 'Williams Estate', status: 'quoted', value: 1200, address: '92 Birch, Perrysburg, OH', notes: 'Quote sent, awaiting decision.', source: 'Website' },
+        { name: 'Monroe Duplex', status: 'quoted', value: 640, address: '12 N River, Monroe, MI', notes: 'Both units.', source: 'Facebook' },
+        { name: 'Perrysburg Commercial', status: 'booked', value: 2400, address: '1700 Louisiana Ave, Perrysburg, OH', source: 'Repeat Customer' },
+        { name: 'Nowak — service', status: 'booked', value: 340, address: '55 Hill Dr, Toledo, OH', source: 'Repeat Customer' },
+        { name: 'Delgado Property', status: 'completed', value: 1800, address: '901 Country Rd, Sylvania, OH', source: 'Referral' },
+      ],
+      customers: [
+        { name: 'Nowak Family', phone: '(419) 555-2103', email: 'nowak@email.com', address: '55 Hill Dr, Toledo, OH', tags: ['repeat'] },
+        { name: 'Perrysburg Commercial LLC', phone: '(419) 555-7811', email: 'manager@perrysbgcommercial.com', address: '1700 Louisiana Ave, Perrysburg, OH', tags: ['commercial'] },
+      ],
+      jobs: [
+        { customerName: 'Nowak Family', durationMinutes: 90, address: '55 Hill Dr, Toledo, OH', value: 340, notes: 'Scheduled service call' },
+        { customerName: 'Perrysburg Commercial', durationMinutes: 180, address: '1700 Louisiana Ave, Perrysburg, OH', value: 2400, notes: 'Contracted service visit' },
+      ],
+      reviews: [
+        { customer: 'Marcus T.', rating: 5, text: 'Fast and professional. Will use again.', reply: 'Thanks Marcus! Glad we could fit your schedule.', repliedAt: Date.now() - 1000 * 60 * 14 },
+        { customer: 'Denise K.', rating: 5, text: 'Best in the area. They show up when they say they will.', reply: 'Means a lot, Denise. See you next visit.', repliedAt: Date.now() - 1000 * 60 * 60 * 8 },
+        { customer: 'Ray J.', rating: 5, text: 'Quick, honest, fair pricing.' },
+        { customer: 'Kim P.', rating: 4, text: 'Good work but ran a bit late. Otherwise no complaints.' },
+      ],
+      aiLog: [
+        { type: 'quote', summary: 'Quote drafted & sent to Baker Residence — $950' },
+        { type: 'review-reply', summary: 'Replied to ★★★★★ from Marcus T.' },
+        { type: 'follow-up', summary: 'Day-3 follow-up sent to Williams Estate' },
+      ],
+    },
+  };
+
+  const seed = SEEDS[t];
+
+  for (const l of seed.leads) {
     await createLead({
       userId,
-      ...l,
+      name: l.name,
+      status: l.status,
+      type: t,
+      value: l.value,
+      address: l.address,
+      notes: l.notes,
+      source: l.source,
       phone: '(419) 555-' + Math.floor(1000 + Math.random() * 9000),
     });
   }
 
-  await createCustomer({
-    userId,
-    name: 'Smith Family',
-    phone: '(419) 555-2103',
-    email: 'smith@email.com',
-    address: '55 Hill Dr, Toledo, OH',
-    tags: ['repeat', 'weekly'],
-  });
-  await createCustomer({
-    userId,
-    name: 'Perrysburg HVAC LLC',
-    phone: '(419) 555-7811',
-    email: 'manager@perrysbgcommercial.com',
-    address: '1700 Louisiana Ave, Perrysburg, OH',
-    tags: ['commercial'],
-  });
+  for (const c of seed.customers) {
+    await createCustomer({ userId, ...c });
+  }
 
   const today = new Date();
   today.setHours(14, 0, 0, 0);
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   tomorrow.setHours(9, 0, 0, 0);
+  const times = [today.getTime(), tomorrow.getTime()];
 
-  await createJob({
-    userId,
-    customerName: 'Smith Family',
-    scheduledFor: today.getTime(),
-    durationMinutes: 60,
-    status: 'scheduled',
-    address: '55 Hill Dr, Toledo, OH',
-    type: 'lawn',
-    value: 65,
-    notes: 'Weekly mow + edge',
-    recurring: 'weekly',
-  });
-  await createJob({
-    userId,
-    customerName: 'Perrysburg HVAC',
-    scheduledFor: tomorrow.getTime(),
-    durationMinutes: 180,
-    status: 'scheduled',
-    address: '1700 Louisiana Ave, Perrysburg, OH',
-    type: 'hvac',
-    value: 2400,
-    notes: 'Annual maintenance + filter replacement',
-  });
-
-  const reviewData = [
-    { customer: 'Marcus T.', rating: 5, text: 'Fast and professional. Will use again.', source: 'google' as const, reply: 'Thanks Marcus! Glad we could fit your schedule.', repliedAt: Date.now() - 1000 * 60 * 14 },
-    { customer: 'Denise K.', rating: 5, text: 'Best lawn care I\'ve used in 10 years. They show up when they say they will.', source: 'google' as const, reply: 'Means a lot, Denise. See you next visit.', repliedAt: Date.now() - 1000 * 60 * 60 * 8 },
-    { customer: 'Ray J.', rating: 5, text: 'Hired them for HVAC service — quick, honest, fair pricing.', source: 'google' as const },
-    { customer: 'Kim P.', rating: 4, text: 'Good work but ran a bit late. Otherwise no complaints.', source: 'google' as const },
-  ];
-
-  for (const r of reviewData) {
-    await createReview({ userId, ...r });
+  for (let i = 0; i < seed.jobs.length; i++) {
+    const j = seed.jobs[i];
+    await createJob({
+      userId,
+      customerName: j.customerName,
+      scheduledFor: times[i] ?? tomorrow.getTime(),
+      durationMinutes: j.durationMinutes,
+      status: 'scheduled',
+      address: j.address,
+      type: t,
+      value: j.value,
+      notes: j.notes,
+      ...(j.recurring ? { recurring: j.recurring } : {}),
+    });
   }
 
-  await logAI(userId, { type: 'quote', summary: 'Quote drafted & sent to Johnson Residence — $280/mo recurring' });
-  await logAI(userId, { type: 'review-reply', summary: 'Replied to ★★★★★ from Marcus T.' });
-  await logAI(userId, { type: 'follow-up', summary: 'Day-3 follow-up sent to Williams Estate' });
+  for (const r of seed.reviews) {
+    await createReview({ userId, ...r, source: 'google' as const });
+  }
+
+  for (const a of seed.aiLog) {
+    await logAI(userId, a);
+  }
 }

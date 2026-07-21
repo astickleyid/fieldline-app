@@ -2,9 +2,9 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // Customer-facing writing (quality matters): quotes, review replies, follow-ups, briefings.
-const MODEL = 'claude-sonnet-4-6';
+const MODEL = process.env.AI_MODEL || 'claude-sonnet-4-6';
 // Structured/internal tasks (cheap + fast): lead scoring, price suggestion. ~5x cheaper.
-const MODEL_FAST = 'claude-haiku-4-5-20251001';
+const MODEL_FAST = process.env.AI_MODEL_FAST || 'claude-haiku-4-5-20251001';
 
 export async function generateQuote(input: {
   jobDescription: string;
