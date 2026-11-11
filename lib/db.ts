@@ -67,7 +67,7 @@ export async function createUser(data: {
   businessName: string;
   trade: User['trade'];
   phone?: string;
-}): Promise<User> {
+}): Promise<{ user: User; created: boolean }> {
   const id = newId('usr');
   const user: User = {
     id,
@@ -77,9 +77,21 @@ export async function createUser(data: {
     phone: data.phone,
     createdAt: Date.now(),
   };
-  await redis.set(`user:${id}`, user);
-  await redis.set(`useremail:${user.email}`, id);
-  return user;
+  // Claim the email and create its user together, avoiding concurrent verified-signup races.
+  const claimedId = await redis.eval<unknown[], string>(`
+    local existing = redis.call('GET', KEYS[1])
+    if existing then return existing end
+    redis.call('SET', KEYS[2], ARGV[2])
+    redis.call('SET', KEYS[1], ARGV[1])
+    return ARGV[1]
+  `, [`useremail:${user.email}`, `user:${id}`], [JSON.stringify(id), JSON.stringify(user)]);
+  const resolvedId = typeof claimedId === 'string' && claimedId.startsWith('"') ? JSON.parse(claimedId) : claimedId;
+  if (resolvedId !== id) {
+    const existing = await getUserById(resolvedId);
+    if (!existing) throw new Error('Unable to create account');
+    return { user: existing, created: false };
+  }
+  return { user, created: true };
 }
 
 export async function updateUser(userId: string, patch: Partial<User>): Promise<User | null> {
