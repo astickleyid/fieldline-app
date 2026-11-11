@@ -8,6 +8,9 @@ export default function LoginPage() {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [awaitingCode, setAwaitingCode] = useState(false);
+  const [code, setCode] = useState('');
+  const [message, setMessage] = useState('');
 
   // Form fields
   const [email, setEmail] = useState('');
@@ -20,8 +23,8 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     try {
-      const url = mode === 'login' ? '/api/auth/login' : '/api/auth/signup';
-      const body = mode === 'login' ? { email } : { email, businessName, trade, phone };
+      const url = awaitingCode ? '/api/auth/verify' : mode === 'login' ? '/api/auth/login' : '/api/auth/signup';
+      const body = awaitingCode ? { code } : mode === 'login' ? { email } : { email, businessName, trade, phone };
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -29,7 +32,8 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
-      router.push('/dashboard');
+      if (awaitingCode) { router.replace('/dashboard'); router.refresh(); }
+      else { setAwaitingCode(true); setCode(''); setMessage(data.message); }
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -58,14 +62,16 @@ export default function LoginPage() {
         <div className="bg-ink-2 border border-rule rounded-xl p-8">
           <div className="flex gap-1 mb-6 p-1 bg-ink rounded-lg border border-rule">
             <button
-              onClick={() => setMode('login')}
+              disabled={loading}
+              onClick={() => { setMode('login'); setAwaitingCode(false); setCode(''); setError(''); setMessage(''); }}
               className={`flex-1 py-2 px-3 rounded-md text-xs font-medium transition-all ${
                 mode === 'login' ? 'bg-paper text-ink' : 'text-paper-mute hover:text-paper'
               }`}>
               Sign In
             </button>
             <button
-              onClick={() => setMode('signup')}
+              disabled={loading}
+              onClick={() => { setMode('signup'); setAwaitingCode(false); setCode(''); setError(''); setMessage(''); }}
               className={`flex-1 py-2 px-3 rounded-md text-xs font-medium transition-all ${
                 mode === 'signup' ? 'bg-paper text-ink' : 'text-paper-mute hover:text-paper'
               }`}>
@@ -74,7 +80,7 @@ export default function LoginPage() {
           </div>
 
           <form onSubmit={submit} className="space-y-4">
-            {mode === 'signup' && (
+            {mode === 'signup' && !awaitingCode && (
               <>
                 <div>
                   <label className="font-mono text-[10px] text-paper-mute tracking-wider uppercase block mb-2">Business Name</label>
@@ -124,6 +130,8 @@ export default function LoginPage() {
               <label className="font-mono text-[10px] text-paper-mute tracking-wider uppercase block mb-2">Email</label>
               <input
                 type="email"
+                disabled={awaitingCode || loading}
+                autoComplete="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -132,8 +140,24 @@ export default function LoginPage() {
               />
             </div>
 
+            {awaitingCode && (
+              <div>
+                <p role="status" className="text-sm text-paper-mute mb-3">{message}</p>
+                <label htmlFor="verification-code" className="text-sm block mb-2">8-digit verification code</label>
+                <input id="verification-code" type="text" inputMode="numeric" autoComplete="one-time-code"
+                  pattern="[0-9]{8}" maxLength={8} required autoFocus value={code} disabled={loading}
+                  onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
+                  className="w-full bg-ink border border-rule rounded-md px-3 py-2.5 text-paper" />
+                <p className="text-xs text-paper-mute mt-2">Expires after 10 minutes. Keep this browser tab open.</p>
+                <button type="button" disabled={loading} className="text-sm text-signal mt-3"
+                  onClick={() => { setAwaitingCode(false); setCode(''); setError(''); setMessage(''); }}>
+                  Change email or request another code
+                </button>
+              </div>
+            )}
+
             {error && (
-              <div className="text-xs text-red-400 bg-red-400/10 border border-red-400/20 rounded-md px-3 py-2 font-mono">
+              <div role="alert" className="text-xs text-red-400 bg-red-400/10 border border-red-400/20 rounded-md px-3 py-2 font-mono">
                 {error}
               </div>
             )}
@@ -142,11 +166,11 @@ export default function LoginPage() {
               type="submit"
               disabled={loading}
               className="w-full py-3 bg-signal hover:bg-signal-bright text-white rounded-md text-sm font-medium transition-all disabled:opacity-50">
-              {loading ? '...' : mode === 'login' ? 'Sign In →' : 'Start Pilot →'}
+              {loading ? 'Please wait…' : awaitingCode ? 'Verify and sign in →' : 'Email me a sign-in code →'}
             </button>
           </form>
 
-          {mode === 'signup' && (
+          {mode === 'signup' && !awaitingCode && (
             <p className="mt-4 text-[11px] text-paper-dim font-mono leading-relaxed">
               30 days free · no credit card · we set everything up · cancel anytime
             </p>
